@@ -1,0 +1,18 @@
+node_modules
+.turbo
+dist
+.next
+.wrangler
+.pnpm-store
+coverage
+.env
+.env.local
+pnpm-lock.yaml
+tmp_shoo_auth
+tmp_shoo_react
+tmp_shoo_types
+
+# Project exclude paths
+/packages/oidc-core/test/index.test.d.ts
+/packages/oidc-core/test/index.test.d.ts.map
+/packages/oidc-core/test/index.test.js

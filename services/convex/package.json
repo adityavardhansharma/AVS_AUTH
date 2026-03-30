@@ -1,0 +1,16 @@
+{
+  "name": "@avs-auth/convex",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "dev": "convex dev"
+  },
+  "dependencies": {
+    "convex": "^1.31.3"
+  }
+}
