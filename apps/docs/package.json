@@ -1,0 +1,13 @@
+{
+  "name": "docs",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.js",
+    "typecheck": "echo 'no typecheck for static docs'",
+    "lint": "echo 'no lint for static docs'",
+    "test": "echo 'no tests for static docs'",
+    "dev": "node build.js && npx serve dist"
+  }
+}
