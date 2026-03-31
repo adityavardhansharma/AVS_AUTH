@@ -4,27 +4,40 @@ AVS AUTH is a Shoo-style authentication broker for `auth.adityavs.tech`.
 
 This repository contains:
 
-- `@avs-auth/types`
-- `@avs-auth/oidc-core`
-- `@avs-auth/auth`
-- `@avs-auth/react`
-- `edge-gateway` Cloudflare Worker
-- broker and docs scaffolds
+- `@avs-auth/types` — shared protocol, SDK, and React contracts
+- `@avs-auth/oidc-core` — client derivation, PKCE, token issuance, pairwise subjects, request validation
+- `@avs-auth/auth` — browser SDK with PKCE sign-in, callback handling, session monitoring, identity persistence
+- `@avs-auth/react` — React hook (`useAvsAuth`) and Convex integration helper
+- `services/edge-gateway` — Cloudflare Worker implementing the full OIDC broker (authorize, token, session/check, logout, consent, Google OAuth, admin routes, hosted script)
+- `services/convex` — durable backend (users, sessions, consents, transactions, codes, pairwise subjects, signing keys, audits, rate limits)
+- `apps/docs` — static documentation site
+- `apps/broker-web` — reserved scaffold (the Worker currently serves the broker UI as inline HTML)
 
 The product requirement is locked to full Shoo parity as a minimum bar. AVS AUTH may add security and operator features, but it may not ship with fewer public features than Shoo.
 
-## Release Gate
-
-- [Shoo parity checklist](/D:/AVS_AUTH/docs/parity-checklist.md)
-- [Implementation plan](/D:/AVS_AUTH/docs/implementation-plan.md)
-- [Test matrix](/D:/AVS_AUTH/docs/test-matrix.md)
-
 ## Current State
 
-This repo is still in scaffold stage:
+All Phase 1 (Shoo parity) functionality is implemented:
 
-- `packages/auth`, `packages/react`, and `packages/oidc-core` contain partial parity implementations
-- `services/edge-gateway` currently serves demo routes and placeholder token/session responses
-- `apps/broker-web`, `apps/docs`, and `services/convex` still need production implementations
+- Full OIDC protocol: `/authorize`, `/token`, `/session/check`, `/logout`, OIDC discovery, JWKS
+- Browser SDK with PKCE S256, session monitoring (auto-stop on `login_required`), strict `checkSession` parsing, aud pre-validation
+- React hook with token-based session state transitions matching Shoo semantics
+- Hosted script (`/avs-auth.js`) with matching SDK behavior
+- Broker UX: landing, sign-in, consent, profile, authorized-sites, legal, error, no-session pages
+- Pairwise subject derivation, domain-derived `client_id`, optional PII consent gating
+- Admin routes: key rotation, client block/unblock, session revocation, audit listing
 
-Do not treat the current worker or UI as release-ready.
+Phase 2 (hardening) is in progress: rate-limit depth, key rollover rigor, operator enforcement, full Convex module test coverage.
+
+## Release Gate
+
+- [Shoo parity checklist](docs/parity-checklist.md)
+- [Implementation plan](docs/implementation-plan.md)
+- [Test matrix](docs/test-matrix.md)
+
+## Verification
+
+```bash
+pnpm turbo run test --force      # all suites, no --passWithNoTests
+pnpm turbo run typecheck          # type safety
+```

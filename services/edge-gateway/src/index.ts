@@ -36,6 +36,7 @@ type Env = {
   DOCS_BASE_URL?: string;
   CONVEX_URL?: string;
   CONVEX_ADMIN_KEY?: string;
+  ADMIN_SECRET?: string;
 };
 
 type UserRecord = { userId: string; profile: BrokerUserProfile };
@@ -355,7 +356,12 @@ async function getGoogleProfile(env: Env, code: string): Promise<BrokerUserProfi
 // ---------------------------------------------------------------------------
 
 function scriptSource(): string {
-  return `(function(){var base=new URL(document.currentScript&&document.currentScript.src?document.currentScript.src:window.location.origin).origin;function p(u){var x=new URL(u||window.location.href,window.location.origin);var c=x.searchParams.get("code"),s=x.searchParams.get("state");return c&&s?{code:c,state:s}:null}function cc(u){var x=new URL(u||window.location.href,window.location.origin);x.searchParams.delete("code");x.searchParams.delete("state");x.searchParams.delete("error");history.replaceState({}, "",x.pathname+x.search+x.hash);return x.toString()}function gi(k){var r=localStorage.getItem(k||"avs_auth_identity");return r?JSON.parse(r):{userId:null}}function pi(u,t,k,e){localStorage.setItem(k||"avs_auth_identity",JSON.stringify({userId:u,token:t,expiresIn:e&&e.expiresIn,receivedAt:Date.now()}))}function ci(k){localStorage.removeItem(k||"avs_auth_identity")}function di(t){if(!t)return null;var p=t.split(".");if(p.length<2)return null;return JSON.parse(atob(p[1].replace(/-/g,"+").replace(/_/g,"/")))}async function pk(){var ch='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';function r(l){var b=crypto.getRandomValues(new Uint8Array(l)),o='';for(var i=0;i<b.length;i++)o+=ch[b[i]%ch.length];return o}var v=r(64),s=r(32),d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v));var a=Array.from(new Uint8Array(d));var c=btoa(String.fromCharCode.apply(null,a)).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');return{verifier:v,state:s,challenge:c}}function su(p){var u=new URL("/authorize",p.avsBaseUrl||base);u.searchParams.set("client_id",p.clientId||("origin:"+new URL(p.redirectUri).origin));u.searchParams.set("redirect_uri",p.redirectUri);u.searchParams.set("state",p.state);u.searchParams.set("code_challenge",p.codeChallenge);u.searchParams.set("code_challenge_method","S256");if(p.requestPii)u.searchParams.set("pii","true");return u.toString()}async function ex(p){var r=await fetch(new URL("/token",p.avsBaseUrl||base),{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({grant_type:"authorization_code",client_id:p.clientId,redirect_uri:p.redirectUri,code:p.code,code_verifier:p.codeVerifier})});if(!r.ok)throw new Error("Token exchange failed ("+r.status+")");return r.json()}async function ss(o){var i=gi(o&&o.storageKey),t=o&&o.token?o.token:i.token;if(!t)return{status:"login_required",reason:"invalid_token"};var r=await fetch(new URL("/session/check",(o&&o.avsBaseUrl)||base),{method:"POST",headers:{Authorization:"Bearer "+t}});return r.status===404||r.status===501?{status:"unsupported"}:r.json()}async function si(o){var cb=(o&&o.callbackPath)||"/avs-auth/callback";var ru=(o&&o.redirectUri)||new URL(cb,window.location.origin).toString();var b=await pk();sessionStorage.setItem("avs_auth_pkce",JSON.stringify({state:b.state,verifier:b.verifier,createdAt:Date.now()}));window.location.assign(su({avsBaseUrl:(o&&o.avsBaseUrl)||base,redirectUri:ru,clientId:(o&&o.clientId)||("origin:"+new URL(ru).origin),state:b.state,codeChallenge:b.challenge,requestPii:o&&o.requestPii}));return b}async function fs(o){var c=p((o&&o.url)||window.location.href);if(!c)return null;var pk=JSON.parse(sessionStorage.getItem("avs_auth_pkce")||"null");if(!pk||pk.state!==c.state)throw new Error("State mismatch in callback");var cb=(o&&o.callbackPath)||"/avs-auth/callback";var ru=(o&&o.redirectUri)||new URL(cb,window.location.origin).toString();var token=await ex({avsBaseUrl:(o&&o.avsBaseUrl)||base,clientId:(o&&o.clientId)||("origin:"+new URL(ru).origin),redirectUri:ru,code:c.code,codeVerifier:pk.verifier});pi(token.pairwise_sub,token.id_token,(o&&o.storageKey)||"avs_auth_identity",{expiresIn:token.expires_in});sessionStorage.removeItem("avs_auth_pkce");cc();return token}function sm(o){var timer=setInterval(async function(){try{var r=await ss(o||{});if(r.status==="login_required"){clearInterval(timer);if(o&&o.onLoginRequired)o.onLoginRequired(r);window.dispatchEvent(new CustomEvent("avs-auth:login-required",{detail:r}))}}catch(e){if(o&&o.onError)o.onError(e)}},(o&&o.intervalMs)||60000);return{stop:function(){clearInterval(timer)}}}var ds=document.currentScript;var opts={callbackPath:(ds&&ds.dataset.callbackPath)||"/avs-auth/callback",requestPii:ds&&ds.dataset.requestPii==="true",autoHandleCallback:!(ds&&ds.dataset.autoHandleCallback==="false"),monitorSession:!(ds&&ds.dataset.monitorSession==="false"),sessionMonitorIntervalMs:parseInt((ds&&ds.dataset.sessionMonitorIntervalMs)||"60000",10),linkSelector:(ds&&ds.dataset.linkSelector)||"a[data-avs-auth],button[data-avs-auth]",storageKey:(ds&&ds.dataset.storageKey)||"avs_auth_identity",debug:ds&&ds.dataset.debug==="true"};window.AvsAuth={defaults:{avsBaseUrl:base,callbackPath:opts.callbackPath,storageKey:opts.storageKey},createPkceBundle:pk,createSignInUrl:su,parseCallback:p,clearCallbackParams:cc,startSignIn:si,finishSignIn:fs,handleCallback:fs,exchangeCode:ex,checkSession:ss,startSessionMonitor:sm,getIdentity:gi,persistIdentity:pi,clearIdentity:ci,decodeIdentityClaims:di};if(opts.autoHandleCallback&&window.location.pathname===opts.callbackPath){void window.AvsAuth.handleCallback()}document.querySelectorAll(opts.linkSelector).forEach(function(n){n.addEventListener('click',function(e){e.preventDefault();void window.AvsAuth.startSignIn({requestPii:n.getAttribute('data-avs-auth-pii')==='true'})})});if(opts.monitorSession&&gi(opts.storageKey).userId){sm({intervalMs:opts.sessionMonitorIntervalMs,storageKey:opts.storageKey})}})();`;
+  // Hosted browser script - matches @avs-auth/auth SDK behavior including:
+  // - Strict 200/401 response parsing in checkSession (ss)
+  // - Aud pre-validation when clientId provided
+  // - Auto-stop session monitor on login_required (sm)
+  // - avs-auth:login-required event dispatch
+  return `(function(){var base=new URL(document.currentScript&&document.currentScript.src?document.currentScript.src:window.location.origin).origin;function p(u){var x=new URL(u||window.location.href,window.location.origin);var c=x.searchParams.get("code"),s=x.searchParams.get("state");return c&&s?{code:c,state:s}:null}function cc(u){var x=new URL(u||window.location.href,window.location.origin);x.searchParams.delete("code");x.searchParams.delete("state");x.searchParams.delete("error");history.replaceState({}, "",x.pathname+x.search+x.hash);return x.toString()}function gi(k){var r=localStorage.getItem(k||"avs_auth_identity");return r?JSON.parse(r):{userId:null}}function pi(u,t,k,e){localStorage.setItem(k||"avs_auth_identity",JSON.stringify({userId:u,token:t,expiresIn:e&&e.expiresIn,receivedAt:Date.now()}))}function ci(k){localStorage.removeItem(k||"avs_auth_identity")}function di(t){if(!t)return null;var parts=t.split(".");if(parts.length<2)return null;try{return JSON.parse(atob(parts[1].replace(/-/g,"+").replace(/_/g,"/")))}catch(e){return null}}async function pk(){var ch='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';function r(l){var b=crypto.getRandomValues(new Uint8Array(l)),o='';for(var i=0;i<b.length;i++)o+=ch[b[i]%ch.length];return o}var v=r(64),s=r(32),d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v));var a=Array.from(new Uint8Array(d));var c=btoa(String.fromCharCode.apply(null,a)).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');return{verifier:v,state:s,challenge:c}}function su(p){var u=new URL("/authorize",p.avsBaseUrl||base);u.searchParams.set("client_id",p.clientId||("origin:"+new URL(p.redirectUri).origin));u.searchParams.set("redirect_uri",p.redirectUri);u.searchParams.set("state",p.state);u.searchParams.set("code_challenge",p.codeChallenge);u.searchParams.set("code_challenge_method","S256");if(p.requestPii)u.searchParams.set("pii","true");return u.toString()}async function ex(p){var r=await fetch(new URL("/token",p.avsBaseUrl||base),{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({grant_type:"authorization_code",client_id:p.clientId,redirect_uri:p.redirectUri,code:p.code,code_verifier:p.codeVerifier})});if(!r.ok)throw new Error("Token exchange failed ("+r.status+")");return r.json()}async function ss(o){var i=gi(o&&o.storageKey),t=o&&o.token?o.token:i.token;if(!t)return{status:"login_required",reason:"invalid_token"};var eCid=o&&o.clientId?o.clientId:o&&o.redirectUri?"origin:"+new URL(o.redirectUri).origin:null;if(eCid){var cl=di(t);if(!cl||cl.aud!==eCid)return{status:"login_required",reason:"invalid_token"}}var r=await fetch(new URL("/session/check",(o&&o.avsBaseUrl)||base),{method:"POST",headers:{Authorization:"Bearer "+t}});if(r.status===404||r.status===501)return{status:"unsupported"};if(r.status===200){var b=await r.json();if(b.status==="active")return{status:"active"};throw new Error("Session check returned an invalid success payload")}if(r.status===401){var b=await r.json();if(b.status==="login_required"&&typeof b.reason==="string"&&(b.reason==="revoked"||b.reason==="expired"||b.reason==="invalid_token"))return{status:"login_required",reason:b.reason};return{status:"login_required",reason:"invalid_token"}}throw new Error("Session check failed ("+r.status+")")}async function si(o){var cb=(o&&o.callbackPath)||"/avs-auth/callback";var ru=(o&&o.redirectUri)||new URL(cb,window.location.origin).toString();var b=await pk();sessionStorage.setItem("avs_auth_pkce",JSON.stringify({state:b.state,verifier:b.verifier,createdAt:Date.now()}));window.location.assign(su({avsBaseUrl:(o&&o.avsBaseUrl)||base,redirectUri:ru,clientId:(o&&o.clientId)||("origin:"+new URL(ru).origin),state:b.state,codeChallenge:b.challenge,requestPii:o&&o.requestPii}));return b}async function fs(o){var c=p((o&&o.url)||window.location.href);if(!c)return null;var pk=JSON.parse(sessionStorage.getItem("avs_auth_pkce")||"null");if(!pk||pk.state!==c.state)throw new Error("State mismatch in callback");var cb=(o&&o.callbackPath)||"/avs-auth/callback";var ru=(o&&o.redirectUri)||new URL(cb,window.location.origin).toString();var token=await ex({avsBaseUrl:(o&&o.avsBaseUrl)||base,clientId:(o&&o.clientId)||("origin:"+new URL(ru).origin),redirectUri:ru,code:c.code,codeVerifier:pk.verifier});pi(token.pairwise_sub,token.id_token,(o&&o.storageKey)||"avs_auth_identity",{expiresIn:token.expires_in});sessionStorage.removeItem("avs_auth_pkce");cc();return token}function sm(o){var stopped=false;function stop(){if(stopped)return;stopped=true;clearInterval(timer)}var timer=setInterval(async function(){if(stopped)return;try{var r=await ss(o||{});if(r.status==="login_required"){stop();if(o&&o.onLoginRequired)o.onLoginRequired(r);window.dispatchEvent(new CustomEvent("avs-auth:login-required",{detail:r}))}}catch(e){if(o&&o.onError)o.onError(e)}},(o&&o.intervalMs)||60000);return{stop:stop}}var ds=document.currentScript;var opts={callbackPath:(ds&&ds.dataset.callbackPath)||"/avs-auth/callback",requestPii:ds&&ds.dataset.requestPii==="true",autoHandleCallback:!(ds&&ds.dataset.autoHandleCallback==="false"),monitorSession:!(ds&&ds.dataset.monitorSession==="false"),sessionMonitorIntervalMs:parseInt((ds&&ds.dataset.sessionMonitorIntervalMs)||"60000",10),linkSelector:(ds&&ds.dataset.linkSelector)||"a[data-avs-auth],button[data-avs-auth]",storageKey:(ds&&ds.dataset.storageKey)||"avs_auth_identity",debug:ds&&ds.dataset.debug==="true"};window.AvsAuth={defaults:{avsBaseUrl:base,callbackPath:opts.callbackPath,storageKey:opts.storageKey},createPkceBundle:pk,createSignInUrl:su,parseCallback:p,clearCallbackParams:cc,startSignIn:si,finishSignIn:fs,handleCallback:fs,exchangeCode:ex,checkSession:ss,startSessionMonitor:sm,getIdentity:gi,persistIdentity:pi,clearIdentity:ci,decodeIdentityClaims:di};if(opts.autoHandleCallback&&window.location.pathname===opts.callbackPath){void window.AvsAuth.handleCallback()}document.querySelectorAll(opts.linkSelector).forEach(function(n){n.addEventListener('click',function(e){e.preventDefault();void window.AvsAuth.startSignIn({requestPii:n.getAttribute('data-avs-auth-pii')==='true'})})});if(opts.monitorSession&&gi(opts.storageKey).token){sm({intervalMs:opts.sessionMonitorIntervalMs,storageKey:opts.storageKey})}})();`;
 }
 
 // ---------------------------------------------------------------------------
@@ -416,6 +422,11 @@ export default {
 
       // ---- JWKS ----
       if (url.pathname === "/.well-known/jwks.json") {
+        if (convex(env)) {
+          const allKeys = await cvxQ<Array<{ kid: string; publicJwk: Jwk; status: string }>>(env, "signingKeys:listPublicSigningKeys", {});
+          const activeKeys = (allKeys ?? []).filter((k) => k.status !== "retired");
+          return json({ keys: activeKeys.map((k) => k.publicJwk) });
+        }
         return json(env.JWKS_JSON ? parseJwks(env.JWKS_JSON) : { keys: [(await signingKeyPromise).publicJwk] as Jwk[] });
       }
 
@@ -430,6 +441,26 @@ export default {
           nonce: url.searchParams.get("nonce") ?? undefined,
           env: env.ENVIRONMENT
         });
+        // Rate limiting (Convex mode only)
+        if (convex(env)) {
+          const rl = await cvxM<{ allowed: boolean; retryAfter: number }>(
+            env, "originMetrics:recordAndCheckRateLimit",
+            { clientId: validated.clientId, endpoint: "authorize" }
+          );
+          if (!rl.allowed) {
+            return new Response(
+              JSON.stringify({ error: "rate_limited", error_description: "Too many requests. Please try again later." }),
+              {
+                status: 429,
+                headers: {
+                  "content-type": "application/json",
+                  "retry-after": String(rl.retryAfter),
+                  "cache-control": "no-store"
+                }
+              }
+            );
+          }
+        }
         const tx: TransactionRecord = {
           ...buildAuthorizeRequestRecord({
             clientId: validated.clientId,
@@ -632,6 +663,27 @@ export default {
           ? await cvxM<CodeRecord | null>(env, "codes:redeemAuthorizationCode", { code })
           : db.codes.get(code) ?? null;
         if (!codeRecord) throw new OidcError("invalid_grant", "Authorization code not found");
+        // Rate limiting (Convex mode only)
+        if (convex(env)) {
+          const rl = await cvxM<{ allowed: boolean; retryAfter: number }>(
+            env, "originMetrics:recordAndCheckRateLimit",
+            { clientId: codeRecord.clientId, endpoint: "token" }
+          );
+          if (!rl.allowed) {
+            return new Response(
+              JSON.stringify({ error: "rate_limited", error_description: "Too many requests. Please try again later." }),
+              {
+                status: 429,
+                headers: {
+                  "content-type": "application/json",
+                  "retry-after": String(rl.retryAfter),
+                  "cache-control": "no-store",
+                  ...corsHeaders(request, env)
+                }
+              }
+            );
+          }
+        }
         const validated = validateTokenRequest({
           grant_type: (body.get("grant_type") ?? "") as TokenRequest["grant_type"],
           client_id: body.get("client_id") ?? "",
@@ -877,6 +929,85 @@ export default {
             "x-content-type-options": "nosniff"
           }
         });
+      }
+
+      // ---- Admin: requires ADMIN_SECRET ----
+      if (url.pathname.startsWith("/admin/")) {
+        const adminSecret = (env as any).ADMIN_SECRET as string | undefined;
+        const authHeader = request.headers.get("authorization");
+        const providedSecret = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+        if (!adminSecret || providedSecret !== adminSecret) {
+          return json({ error: "unauthorized", error_description: "Valid ADMIN_SECRET required" }, { status: 401 });
+        }
+
+        // POST /admin/rotate-keys
+        if (url.pathname === "/admin/rotate-keys" && request.method === "POST") {
+          if (!convex(env)) {
+            return json({ error: "unavailable", error_description: "Convex not configured" }, { status: 503 });
+          }
+          const newKey = await generateSigningKeySet();
+          const result = await cvxM(env, "signingKeys:rotateSigningKey", {
+            kid: newKey.kid,
+            publicJwk: newKey.publicJwk,
+            encryptedPrivateJwk: JSON.stringify(newKey.privateKey),
+            status: "active",
+            createdAt: Date.now()
+          });
+          return json({ status: "rotated", kid: newKey.kid, result });
+        }
+
+        // POST /admin/block-client
+        if (url.pathname === "/admin/block-client" && request.method === "POST") {
+          if (!convex(env)) {
+            return json({ error: "unavailable", error_description: "Convex not configured" }, { status: 503 });
+          }
+          const body = await parseFormBody(request);
+          const clientId = body.get("clientId") ?? body.get("client_id") ?? "";
+          if (!clientId) {
+            return json({ error: "invalid_request", error_description: "clientId required" }, { status: 400 });
+          }
+          await cvxM(env, "operator:blockClient", { clientId, reason: body.get("reason") ?? "admin action" });
+          return json({ status: "blocked", clientId });
+        }
+
+        // POST /admin/unblock-client
+        if (url.pathname === "/admin/unblock-client" && request.method === "POST") {
+          if (!convex(env)) {
+            return json({ error: "unavailable", error_description: "Convex not configured" }, { status: 503 });
+          }
+          const body = await parseFormBody(request);
+          const clientId = body.get("clientId") ?? body.get("client_id") ?? "";
+          if (!clientId) {
+            return json({ error: "invalid_request", error_description: "clientId required" }, { status: 400 });
+          }
+          await cvxM(env, "operator:unblockClient", { clientId });
+          return json({ status: "unblocked", clientId });
+        }
+
+        // POST /admin/revoke-user-sessions
+        if (url.pathname === "/admin/revoke-user-sessions" && request.method === "POST") {
+          if (!convex(env)) {
+            return json({ error: "unavailable", error_description: "Convex not configured" }, { status: 503 });
+          }
+          const body = await parseFormBody(request);
+          const userId = body.get("userId") ?? body.get("user_id") ?? "";
+          if (!userId) {
+            return json({ error: "invalid_request", error_description: "userId required" }, { status: 400 });
+          }
+          await cvxM(env, "operator:revokeAllSessionsForUser", { userId });
+          return json({ status: "revoked", userId });
+        }
+
+        // GET /admin/audit
+        if (url.pathname === "/admin/audit" && request.method === "GET") {
+          if (!convex(env)) {
+            return json({ error: "unavailable", error_description: "Convex not configured" }, { status: 503 });
+          }
+          const events = await cvxQ(env, "auditEvents:listAuditEvents", {});
+          return json({ events });
+        }
+
+        return json({ error: "not_found", error_description: "Unknown admin route" }, { status: 404 });
       }
 
       // ---- 404 ----

@@ -297,6 +297,16 @@ export async function exchangeCode(params: ExchangeCodeParams): Promise<TokenRes
   return (await response.json()) as TokenResponse;
 }
 
+function resolveClientIdForCheck(params: CheckSessionOptions): string | null {
+  if (params.clientId) {
+    return params.clientId;
+  }
+  if (params.redirectUri) {
+    return deriveClientIdFromRedirectUri(params.redirectUri);
+  }
+  return null;
+}
+
 export async function checkSession(
   params: CheckSessionOptions = {}
 ): Promise<SessionCheckResult> {
@@ -305,6 +315,16 @@ export async function checkSession(
   if (!token) {
     return { status: "login_required", reason: "invalid_token" };
   }
+
+  // Pre-validate token audience when clientId or redirectUri is provided (Shoo parity)
+  const expectedClientId = resolveClientIdForCheck(params);
+  if (expectedClientId) {
+    const claims = decodeIdentityClaims(token);
+    if (!claims || claims.aud !== expectedClientId) {
+      return { status: "login_required", reason: "invalid_token" };
+    }
+  }
+
   const response = await fetch(new URL("/session/check", params.avsBaseUrl ?? DEFAULT_BASE_URL), {
     method: "POST",
     headers: {
@@ -315,7 +335,31 @@ export async function checkSession(
   if (response.status === 404 || response.status === 501) {
     return { status: "unsupported" };
   }
-  return (await response.json()) as SessionCheckResult;
+
+  // Strict response parsing (Shoo parity)
+  if (response.status === 200) {
+    const payload = (await response.json()) as Record<string, unknown>;
+    if (payload.status === "active") {
+      return { status: "active" };
+    }
+    throw new Error("Session check returned an invalid success payload");
+  }
+
+  if (response.status === 401) {
+    const payload = (await response.json()) as Record<string, unknown>;
+    if (
+      payload.status === "login_required" &&
+      typeof payload.reason === "string" &&
+      (payload.reason === "revoked" || payload.reason === "expired" || payload.reason === "invalid_token")
+    ) {
+      return { status: "login_required", reason: payload.reason };
+    }
+    // Fallback for malformed 401 payload
+    return { status: "login_required", reason: "invalid_token" };
+  }
+
+  // Throw for unexpected statuses (Shoo parity)
+  throw new Error(`Session check failed (${response.status})`);
 }
 
 export function startSessionMonitor(options: SessionMonitorOptions = {}): SessionMonitorHandle {
@@ -328,8 +372,11 @@ export function startSessionMonitor(options: SessionMonitorOptions = {}): Sessio
   let inFlight = false;
 
   const stop = (): void => {
+    if (stopped) {
+      return;
+    }
     stopped = true;
-    clearInterval(timer);
+    window.clearInterval(timer);
   };
 
   const runCheck = async (): Promise<void> => {
@@ -341,9 +388,10 @@ export function startSessionMonitor(options: SessionMonitorOptions = {}): Sessio
       const result = await checkSession(options);
       if (result.status === "login_required") {
         options.onLoginRequired?.(result);
+        stop(); // Auto-stop after first login_required (Shoo parity)
       }
     } catch (error) {
-      options.onError?.(error instanceof Error ? error : new Error("Session monitor failed"));
+      options.onError?.(error instanceof Error ? error : new Error("Unexpected session check failure"));
     } finally {
       inFlight = false;
     }
@@ -490,13 +538,28 @@ export function createAvsAuth(options: AvsAuthOptions = {}): AvsAuthClient {
     clearIdentity: (storageKey) => clearIdentity(storageKey ?? resolved.storageKey),
     decodeIdentityClaims,
     exchangeCode,
-    checkSession: (params) =>
-      checkSession({
+    checkSession: (params) => {
+      const effectiveRedirectUri = params?.redirectUri ?? resolved.redirectUri;
+      const effectiveClientId = params?.clientId ?? deriveClientIdFromRedirectUri(effectiveRedirectUri);
+      return checkSession({
         ...params,
         avsBaseUrl: params?.avsBaseUrl ?? resolved.avsBaseUrl,
+        redirectUri: effectiveRedirectUri,
+        clientId: effectiveClientId,
         storageKey: params?.storageKey ?? resolved.storageKey
-      }),
-    startSessionMonitor,
+      });
+    },
+    startSessionMonitor: (options) => {
+      const effectiveRedirectUri = options?.redirectUri ?? resolved.redirectUri;
+      const effectiveClientId = options?.clientId ?? deriveClientIdFromRedirectUri(effectiveRedirectUri);
+      return startSessionMonitor({
+        ...options,
+        avsBaseUrl: options?.avsBaseUrl ?? resolved.avsBaseUrl,
+        redirectUri: effectiveRedirectUri,
+        clientId: effectiveClientId,
+        storageKey: options?.storageKey ?? resolved.storageKey
+      });
+    },
     startSignIn: async (params) => {
       requireBrowser("startSignIn");
       const redirectUri = params?.redirectUri ?? resolved.redirectUri;

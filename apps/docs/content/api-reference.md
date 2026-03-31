@@ -32,33 +32,45 @@ Clears the broker session and cookie. Returns: `{ status: "ok" }`
 
 ## @avs-auth/auth
 
-- `createAvsAuth(options?)` - Creates an auth client instance
-- `createPkceBundle()` - Generates PKCE material
-- `createSignInUrl(params)` - Builds an authorize URL
-- `parseCallback(url?)` - Extracts code and state from URL
-- `clearCallbackParams(url?)` - Removes auth params from URL
-- `getIdentity(storageKey?)` - Reads identity from localStorage
-- `persistIdentity(userId, token, storageKey?, extras?)` - Saves identity
-- `clearIdentity(storageKey?)` - Removes identity
-- `decodeIdentityClaims(idToken?)` - Decodes JWT payload
-- `exchangeCode(params)` - Exchanges code for token
-- `checkSession(params?)` - Checks session status
-- `startSessionMonitor(options?)` - Starts periodic session checks
-- `startSignIn(params?)` - Initiates sign-in flow
-- `finishSignIn(params?)` - Completes callback flow
-- `handleCallback(params?)` - Full callback handler
-- `isCallbackRoute(callbackPath, pathname?)` - Route matcher
-- `defaults` - Default configuration values
+### Standalone exports
+
+- `createAvsAuth(options?)` - Creates an auth client instance with all methods bound to the resolved config
+- `createPkceBundle()` - Generates a PKCE bundle `{ state, verifier, challenge }`
+- `createSignInUrl(params)` - Builds an `/authorize` URL from explicit params
+- `parseCallback(url?)` - Extracts `{ code, state }` from the current URL or a given URL
+- `clearCallbackParams(url?)` - Removes `code`, `state`, and `error` params from the URL and calls `history.replaceState`
+- `getIdentity(storageKey?)` - Reads `AvsIdentity` from `localStorage`
+- `persistIdentity(userId, token, storageKey?, extras?)` - Saves identity to `localStorage`
+- `clearIdentity(storageKey?)` - Removes identity from `localStorage`
+- `decodeIdentityClaims(idToken?)` - Decodes JWT payload without verification
+- `exchangeCode(params)` - Calls `POST /token` with PKCE verifier and returns `TokenResponse`
+- `checkSession(params?)` - Calls `POST /session/check` with the stored `id_token`
+- `startSessionMonitor(options?)` - Starts a polling session check; returns `{ stop() }`
+- `isCallbackRoute(callbackPath, pathname?)` - Returns `true` when `pathname` matches `callbackPath`
+- `createHostedRuntime(options?)` - Creates a runtime for the hosted script with `bindLinkUpgrade`, `autoHandleCallback`, and `dispatchLoginRequired`
+- `bootstrapHostedScript(script?)` - Reads `data-*` attributes from the current `<script>` tag and initialises a `HostedRuntime`
+- `defaults` - Default configuration values (`AvsAuthOptions` with all fields populated)
+
+### AvsAuthClient methods (returned by `createAvsAuth`)
+
+The client object exposes the same functions bound to the resolved options, plus:
+
+- `client.startSignIn(params?)` - Generates PKCE, stores verifier, and redirects to the broker
+- `client.finishSignIn(params?)` - Exchanges the code, persists identity, and optionally redirects
+- `client.handleCallback(params?)` - `finishSignIn` + redirect to stored return-to path; returns `TokenResponse | null`
+- All standalone functions listed above, bound to `client.options`
 
 ## @avs-auth/react
 
-- `useAvsAuth(options?)` - React hook returning identity, claims, session state, and auth actions
-- `createAvsConvexAuth(options?)` - Convex-compatible auth adapter returning useAuth, signIn, signOut
+- `useAvsAuth(options?)` - React hook returning `identity`, `claims`, `sessionState`, `loading`, `error`, `signIn`, `handleCallback`, `checkSession`, `refreshIdentity`, `clearIdentity`, `authClient`
+- `createAvsConvexAuth(options)` - Convex-compatible auth adapter; returns `{ useAuth, signIn, signOut }`
+- `createAvsAuth` - Re-exported from `@avs-auth/auth`
+- `decodeIdentityClaims` - Re-exported from `@avs-auth/auth`
 
 ## @avs-auth/types
 
-All TypeScript types exported: `AuthorizeRequest`, `TokenRequest`, `TokenResponse`, `IdentityClaims`, `AvsIdentity`, `PkceBundle`, `SessionCheckResponse`, `SessionCheckResult`, `AvsAuthOptions`, `StartSignInOptions`, `FinishSignInOptions`, `HandleCallbackOptions`, `CheckSessionOptions`, `ExchangeCodeParams`, `SessionMonitorOptions`, `SessionMonitorHandle`, `UseAvsAuthOptions`, `UseAvsAuthResult`, `AvsAuthClientShape`, `LogoutResponse`, `ConsentGrant`, `AuthorizedSite`, `BrokerSessionSummary`, `BrokerUserProfile`, `OperatorAuditEvent`, `Jwk`, `OpenIdConfiguration`.
+All TypeScript types exported: `CodeChallengeMethod`, `AuthorizeRequest`, `TokenRequest`, `TokenResponse`, `IdentityClaims`, `AvsIdentity`, `PkceBundle`, `SessionCheckResponse`, `SessionCheckResult`, `SessionCheckReason`, `SessionState`, `AvsAuthOptions`, `StartSignInOptions`, `FinishSignInOptions`, `HandleCallbackOptions`, `CheckSessionOptions`, `ExchangeCodeParams`, `SessionMonitorOptions`, `SessionMonitorHandle`, `UseAvsAuthOptions`, `UseAvsAuthResult`, `AvsAuthClientShape`, `LogoutResponse`, `ConsentGrant`, `AuthorizedSite`, `BrokerSessionSummary`, `BrokerUserProfile`, `OperatorAuditEvent`, `Jwk`, `OpenIdConfiguration`.
 
 ## window.AvsAuth (hosted script)
 
-The hosted script at `/avs-auth.js` exposes all browser SDK functions on `window.AvsAuth`: `defaults`, `createPkceBundle`, `createSignInUrl`, `parseCallback`, `clearCallbackParams`, `startSignIn`, `finishSignIn`, `handleCallback`, `exchangeCode`, `checkSession`, `startSessionMonitor`, `getIdentity`, `persistIdentity`, `clearIdentity`, `decodeIdentityClaims`.
+The hosted script at `/avs-auth.js` initialises via `bootstrapHostedScript` and exposes the SDK on `window.AvsAuth`. The object is an `AvsAuthClient` (returned by `createAvsAuth`) so all client methods are available: `startSignIn`, `finishSignIn`, `handleCallback`, `checkSession`, `startSessionMonitor`, `getIdentity`, `persistIdentity`, `clearIdentity`, `decodeIdentityClaims`, `createPkceBundle`, `createSignInUrl`, `parseCallback`, `clearCallbackParams`, plus `defaults`.

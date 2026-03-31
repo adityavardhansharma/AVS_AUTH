@@ -5,39 +5,31 @@ This plan is locked to full Shoo parity as a floor, not an aspirational target.
 ## Target Architecture
 
 - `services/edge-gateway`
-  - Cloudflare Worker for OIDC endpoints, hosted script, headers, rate limits, request ids, and Google OAuth entry points.
+  - Cloudflare Worker implementing all OIDC endpoints (`/authorize`, `/token`, `/session/check`, `/logout`), OIDC discovery, JWKS, Google OAuth, consent flows, hosted script (`/avs-auth.js`), broker UI pages (inline HTML), admin routes, security headers, CORS, and rate limiting (Convex mode).
 - `services/convex`
-  - durable sessions, transactions, consents, clients, codes, keys, pairwise subjects, audits, and operator mutations.
+  - Durable backend with complete schema and `ctx.db.*` implementations for sessions, transactions, consents, clients, codes, keys, pairwise subjects, audits, and rate-limit metrics.
 - `apps/broker-web`
-  - public broker site at `auth.adityavs.tech` for landing, sign-in, consent, profile, authorized sites, and legal pages.
+  - Reserved scaffold. The Worker inline HTML serves all production broker pages. This scaffold exists as a future option for a framework-based UI.
 - `apps/docs`
-  - public docs at `docs.auth.adityavs.tech` for quickstarts, architecture, verification, and API reference.
+  - Static documentation site with 7 content files (introduction, getting started React/vanilla, how it works, server verification, Convex guide, API reference) and a build pipeline.
 - `packages/types`
-  - shared request, response, claims, and SDK contracts.
+  - Shared protocol, SDK, and React type contracts. Types-only package with export contract test.
 - `packages/oidc-core`
-  - client derivation, request validation, pairwise subject derivation, token issuance, key handling.
+  - Client derivation, request validation, PKCE verification, pairwise subject derivation (HMAC-SHA256), token issuance (ES256 via JOSE), key generation, OIDC configuration builder, session check response builder.
 - `packages/auth`
-  - browser SDK and hosted-script runtime surface.
+  - Browser SDK with PKCE S256 sign-in, callback handling, identity persistence, session monitoring (auto-stop on `login_required`), strict `checkSession` response parsing, aud pre-validation, and hosted-script runtime.
 - `packages/react`
-  - React hook and Convex integration helper.
+  - React hook (`useAvsAuth`) with token-based session state transitions matching Shoo semantics, and Convex integration helper (`createAvsConvexAuth`).
 
 ## Phase Gate Sequence
 
-1. Parity inventory lock
-   - keep [parity-checklist.md](/D:/AVS_AUTH/docs/parity-checklist.md) current
-   - no scope reductions allowed
-2. Protocol core
-   - complete OIDC metadata, JWKS, authorize, token, session-check, logout, and code storage
-3. Google and broker session
-   - upstream Google login, callback resolution, broker cookie lifecycle, repeat sign-in fast-path
-4. Consent and account UX
-   - consent grant or deny, profile page, authorized sites, revoke flows, error and no-session states
-5. SDK parity
-   - package APIs, hosted script bootstrap, callback automation, session monitoring
-6. Docs parity
-   - React, vanilla, hosted script, server verification, Convex guide, API reference
-7. Hardening
-   - key rotation, audits, abuse blocks, operator tooling, CSP tightening, operational runbooks
+1. Parity inventory lock — keep [parity-checklist.md](parity-checklist.md) current; no scope reductions allowed
+2. Protocol core — OIDC metadata, JWKS, authorize, token, session-check, logout, code storage (**done**)
+3. Google and broker session — upstream Google login, callback resolution, broker cookie lifecycle, repeat sign-in fast-path (**done**)
+4. Consent and account UX — consent grant or deny, profile page, authorized sites, revoke flows, error and no-session states (**done**)
+5. SDK parity — package APIs, hosted script bootstrap, callback automation, session monitoring, strict `checkSession`, aud validation (**done**)
+6. Docs parity — React, vanilla, hosted script, server verification, Convex guide, API reference (**done**)
+7. Hardening — key rotation, audits, abuse blocks, operator tooling, CSP tightening, operational runbooks (**in progress**)
 
 ## Durable Data Model
 
@@ -65,10 +57,9 @@ This plan is locked to full Shoo parity as a floor, not an aspirational target.
 - broker cookie must be `HttpOnly`, `Secure`, and `SameSite=Lax` or stricter where compatible
 - no token or code values in logs
 
-## Remaining Repository Gaps
+## Remaining Work (Hardening Phase)
 
-- `apps/broker-web` is still a placeholder and needs a real app
-- `apps/docs` needs actual docs pages rather than a README stub
-- `services/convex` has no schema or functions yet
-- `services/edge-gateway` is still demo-mode for sign-in, token issue, and hosted script
-- integration and browser tests are still missing outside `packages/oidc-core`
+- Rate limiting completeness: in-memory dev-mode limiter, threshold tests, `Retry-After` assertions, audit event logging for limit hits.
+- Key rotation/JWKS rollover safety: serve both current and previous keys during TTL window, test old token verification during rollover.
+- Operator effectiveness: enforce blocked-client state in auth path (not just admin surface), audit writes for all admin operations.
+- Convex module test coverage: `transactions`, `clients`, `operator`, `auditEvents`, `originMetrics`.

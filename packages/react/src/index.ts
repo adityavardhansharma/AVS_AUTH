@@ -86,17 +86,26 @@ export function useAvsAuth(options: UseAvsAuthOptions = {}): UseAvsAuthResult {
   }, []);
 
   const refreshIdentity = useCallback(() => {
-    const client = getClient();
-    const nextIdentity = client.getIdentity();
-    setIdentity(nextIdentity);
-    setSessionState(nextIdentity.userId ? "unknown" : "login_required");
+    try {
+      const client = getClient();
+      const nextIdentity = client.getIdentity();
+      setIdentity(nextIdentity);
+      setSessionState(nextIdentity.token ? "unknown" : "login_required");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refresh identity");
+    }
   }, [getClient]);
 
   const clearIdentity = useCallback(() => {
-    const client = getClient();
-    client.clearIdentity();
-    setIdentity({ userId: null });
-    setSessionState("login_required");
+    try {
+      const client = getClient();
+      client.clearIdentity();
+      setIdentity({ userId: null });
+      setSessionState("login_required");
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to clear identity");
+    }
   }, [getClient]);
 
   const signIn = useCallback(
@@ -108,11 +117,14 @@ export function useAvsAuth(options: UseAvsAuthOptions = {}): UseAvsAuthResult {
 
   const handleCallback = useCallback(
     async (params?: HandleCallbackOptions) => {
-      const token = await getClient().handleCallback(params);
-      refreshIdentity();
+      const client = getClient();
+      const token = await client.handleCallback(params);
+      const nextIdentity = client.getIdentity();
+      setIdentity(nextIdentity);
+      setSessionState(nextIdentity.token ? "unknown" : "login_required");
       return token;
     },
-    [getClient, refreshIdentity]
+    [getClient]
   );
 
   const checkSession = useCallback(
@@ -121,19 +133,25 @@ export function useAvsAuth(options: UseAvsAuthOptions = {}): UseAvsAuthResult {
       const result = await client.checkSession(params);
       if (result.status === "active") {
         setSessionState("active");
-      } else if (result.status === "login_required") {
-        client.clearIdentity();
-        setIdentity({ userId: null });
-        setSessionState("login_required");
-      } else {
-        setSessionState("unknown");
+        return result;
       }
+      if (result.status === "unsupported") {
+        setSessionState("unknown");
+        return result;
+      }
+      // login_required
+      client.clearIdentity();
+      setIdentity({ userId: null });
+      setSessionState("login_required");
       return result;
     },
     [getClient]
   );
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
     let cancelled = false;
 
     void (async () => {
@@ -145,7 +163,8 @@ export function useAvsAuth(options: UseAvsAuthOptions = {}): UseAvsAuthResult {
         if (!cancelled) {
           const nextIdentity = client.getIdentity();
           setIdentity(nextIdentity);
-          setSessionState(nextIdentity.userId ? "unknown" : "login_required");
+          setSessionState(nextIdentity.token ? "unknown" : "login_required");
+          setError(null);
         }
       } catch (nextError) {
         if (!cancelled) {
@@ -164,17 +183,29 @@ export function useAvsAuth(options: UseAvsAuthOptions = {}): UseAvsAuthResult {
   }, [getClient]);
 
   useEffect(() => {
-    if (loading || options.autoSessionMonitor === false || !identity.token) {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (loading || options.autoSessionMonitor === false) {
+      return;
+    }
+    // When monitor starts with no token, set sessionState to login_required (Shoo parity)
+    if (!identity.token) {
+      setSessionState("login_required");
       return;
     }
 
     const client = getClient();
     const monitor = client.startSessionMonitor({
-      intervalMs: options.sessionMonitorIntervalMs,
+      intervalMs: options.sessionMonitorIntervalMs ?? 60_000,
+      immediate: true,
       onLoginRequired: () => {
         client.clearIdentity();
         setIdentity({ userId: null });
         setSessionState("login_required");
+      },
+      onError: () => {
+        // fail-open: retain local identity and retry on next interval.
       }
     } satisfies SessionMonitorOptions);
 

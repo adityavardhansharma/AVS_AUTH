@@ -54,7 +54,7 @@ npm install @avs-auth/auth
 ```
 
 ```javascript
-import { createAvsAuth } from "@avs-auth/auth";
+import { createAvsAuth, isCallbackRoute } from "@avs-auth/auth";
 
 const auth = createAvsAuth({ callbackPath: "/auth/callback" });
 
@@ -62,11 +62,17 @@ document.getElementById("sign-in-btn").addEventListener("click", () => {
   auth.startSignIn();
 });
 
-if (window.location.pathname === "/auth/callback") {
-  const token = await auth.handleCallback();
-  if (token) {
-    console.log("Signed in:", token.pairwise_sub);
-  }
+// On the callback route, exchange the code and redirect back automatically
+if (isCallbackRoute("/auth/callback")) {
+  // handleCallback exchanges the code, stores the identity, and redirects
+  // to the page the user was on before sign-in (or "/" by default)
+  await auth.handleCallback();
+}
+
+// Read the stored identity on any page
+const identity = auth.getIdentity();
+if (identity.userId) {
+  console.log("Signed in as:", identity.userId);
 }
 ```
 

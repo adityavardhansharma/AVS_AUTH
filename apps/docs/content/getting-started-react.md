@@ -14,11 +14,12 @@ npm install @avs-auth/react
 import { useAvsAuth } from "@avs-auth/react";
 
 function App() {
-  const { identity, claims, loading, signIn, clearIdentity } = useAvsAuth({
+  const { identity, claims, sessionState, loading, error, signIn, clearIdentity } = useAvsAuth({
     callbackPath: "/auth/callback"
   });
 
   if (loading) return <p>Loading...</p>;
+  if (error) return <p>Auth error: {error}</p>;
 
   if (!identity.userId) {
     return <button onClick={() => signIn()}>Sign In</button>;
@@ -27,6 +28,7 @@ function App() {
   return (
     <div>
       <p>Signed in as {claims?.email ?? identity.userId}</p>
+      <p>Session: {sessionState}</p>
       <button onClick={() => clearIdentity()}>Sign Out</button>
     </div>
   );
