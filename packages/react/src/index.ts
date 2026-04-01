@@ -209,6 +209,12 @@ export function useAvsAuth(options: UseAvsAuthOptions = {}): UseAvsAuthResult {
         setSessionState("unknown");
         return result;
       }
+      if (result.status === "rate_limited") {
+        // Session is temporarily throttled — the session is still valid so do
+        // NOT clear identity or change session state. Let the caller back off
+        // using result.retryAfter.
+        return result;
+      }
       // login_required
       client.clearIdentity();
       setIdentity({ userId: null });

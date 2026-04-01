@@ -113,25 +113,28 @@ export const deleteUserAccount = mutationGeneric({
       await ctx.db.delete(consent._id);
     }
 
-    const pairwiseSubjects = await ctx.db.query("pairwise_subjects").collect();
+    const pairwiseSubjects = await ctx.db
+      .query("pairwise_subjects")
+      .withIndex("by_user_id_client_id", (q: any) => q.eq("userId", args.userId))
+      .collect();
     for (const pairwise of pairwiseSubjects) {
-      if (pairwise.userId === args.userId) {
-        await ctx.db.delete(pairwise._id);
-      }
+      await ctx.db.delete(pairwise._id);
     }
 
-    const transactions = await ctx.db.query("auth_transactions").collect();
+    const transactions = await ctx.db
+      .query("auth_transactions")
+      .withIndex("by_user_id", (q: any) => q.eq("userId", args.userId))
+      .collect();
     for (const transaction of transactions) {
-      if (transaction.userId === args.userId) {
-        await ctx.db.delete(transaction._id);
-      }
+      await ctx.db.delete(transaction._id);
     }
 
-    const codes = await ctx.db.query("authorization_codes").collect();
+    const codes = await ctx.db
+      .query("authorization_codes")
+      .withIndex("by_user_id", (q: any) => q.eq("userId", args.userId))
+      .collect();
     for (const code of codes) {
-      if (code.userId === args.userId) {
-        await ctx.db.delete(code._id);
-      }
+      await ctx.db.delete(code._id);
     }
 
     await ctx.db.delete(user._id);
