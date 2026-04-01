@@ -1,0 +1,249 @@
+---
+// Hero section — big headline + code blocks
+---
+
+<section class="hero">
+  <div class="hero-inner container">
+    <div class="hero-content">
+      <h1 class="hero-headline">
+        <span class="hero-line">AUTH IN</span>
+        <span class="hero-line"><span class="highlight">2 LOC</span></span>
+      </h1>
+      <p class="hero-tagline">
+        Drop-in authentication for any web app. No dashboards. No client registration. Every user gets a unique, privacy-preserving identity per app.
+      </p>
+      <div class="hero-links">
+        <a href="https://auth.adityavs.tech/sign-in" class="hero-cta" target="_blank" rel="noopener">
+          Sign In Once
+          <span class="cta-arrow">&rarr;</span>
+        </a>
+        <a href="/docs" class="hero-ghost">
+          Get Started
+        </a>
+        <a href="/docs/how-it-works" class="hero-link">How it works</a>
+      </div>
+      <p class="hero-note">
+        Open your AVS AUTH session on the website once, then reuse that broker session for fast sign-in across connected apps.
+      </p>
+      <div class="hero-legal">
+        <a href="https://auth.adityavs.tech/privacy">Privacy</a>
+        <span class="legal-sep">&middot;</span>
+        <a href="https://auth.adityavs.tech/terms">Terms</a>
+      </div>
+    </div>
+
+    <div class="hero-code">
+      <div class="code-block">
+        <div class="code-header">1 &mdash; ADD THE SCRIPT</div>
+        <pre class="code-body"><code>&lt;script src="https://auth.adityavs.tech/avs-auth.js"&gt;&lt;/script&gt;</code></pre>
+      </div>
+
+      <div class="code-block">
+        <div class="code-header">2 &mdash; ADD A LOGIN LINK</div>
+        <pre class="code-body"><code>&lt;a href="https://auth.adityavs.tech/authorize?redirect_uri=https://yourapp.com/avs-auth/callback"&gt;Login&lt;/a&gt;</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero {
+    padding: 80px 0 60px;
+    animation: fadeInUp 0.6s ease-out;
+  }
+
+  .hero-inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 80px;
+    align-items: start;
+  }
+
+  .hero-content {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .hero-headline {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: clamp(3.5rem, 8vw, 7rem);
+    line-height: 0.9;
+    letter-spacing: -0.03em;
+  }
+
+  .hero-line {
+    display: block;
+  }
+
+  .highlight {
+    color: var(--yellow);
+    position: relative;
+  }
+
+  .hero-tagline {
+    font-size: 1.1rem;
+    opacity: 0.7;
+    max-width: 400px;
+    line-height: 1.6;
+  }
+
+  .hero-links {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    margin-top: 8px;
+  }
+
+  .hero-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--yellow);
+    color: var(--black);
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 0.85rem;
+    padding: 12px 24px;
+    border-radius: var(--radius);
+    text-decoration: none;
+    letter-spacing: 0.02em;
+    transition: all var(--transition);
+  }
+
+  .hero-cta:hover {
+    opacity: 1;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(235, 255, 0, 0.3);
+  }
+
+  .hero-cta:hover .cta-arrow {
+    transform: translateX(3px);
+  }
+
+  .cta-arrow {
+    transition: transform var(--transition);
+  }
+
+  .hero-link {
+    font-size: 0.9rem;
+    color: var(--white);
+    opacity: 0.5;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    transition: opacity var(--transition);
+  }
+
+  .hero-link:hover {
+    opacity: 1;
+  }
+
+  .hero-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 12px 20px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--white);
+    text-decoration: none;
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    transition: border-color var(--transition), background var(--transition);
+  }
+
+  .hero-ghost:hover {
+    border-color: var(--yellow);
+    background: rgba(235, 255, 0, 0.05);
+    opacity: 1;
+  }
+
+  .hero-note {
+    max-width: 520px;
+    font-size: 0.82rem;
+    color: var(--yellow);
+    opacity: 0.8;
+    line-height: 1.7;
+    letter-spacing: 0.02em;
+  }
+
+  .hero-legal {
+    display: flex;
+    gap: 8px;
+    font-size: 0.75rem;
+    opacity: 0.4;
+    margin-top: 8px;
+  }
+
+  .hero-legal a {
+    color: var(--yellow);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .legal-sep {
+    opacity: 0.5;
+  }
+
+  /* Code blocks */
+  .hero-code {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    animation: slideIn 0.6s ease-out 0.2s both;
+  }
+
+  .code-block {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: rgba(245, 245, 245, 0.03);
+  }
+
+  .code-header {
+    padding: 12px 20px;
+    font-family: var(--font-display);
+    font-size: 0.75rem;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    color: var(--black);
+    background: var(--yellow);
+  }
+
+  .code-body {
+    padding: 18px 20px;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    line-height: 1.7;
+    overflow-x: auto;
+    color: var(--yellow);
+  }
+
+  .code-body code {
+    color: var(--yellow);
+  }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .hero-inner {
+      grid-template-columns: 1fr;
+      gap: 48px;
+    }
+
+    .hero {
+      padding: 48px 0 40px;
+    }
+
+    .hero-headline {
+      font-size: clamp(2.5rem, 10vw, 4.5rem);
+    }
+
+    .hero-links {
+      flex-wrap: wrap;
+    }
+  }
+</style>

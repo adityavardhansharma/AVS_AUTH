@@ -14,6 +14,16 @@ export const blockClient = mutationGeneric({
         status: "blocked",
         blockedReason: args.reason
       });
+    } else {
+      const now = Date.now();
+      await ctx.db.insert("clients", {
+        clientId: args.clientId,
+        origin: args.clientId.replace(/^origin:/, ""),
+        firstSeenAt: now,
+        lastSeenAt: now,
+        status: "blocked",
+        blockedReason: args.reason
+      });
     }
     return null;
   }

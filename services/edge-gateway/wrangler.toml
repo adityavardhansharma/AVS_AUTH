@@ -2,13 +2,19 @@ name = "avs-auth-edge"
 main = "src/index.ts"
 compatibility_date = "2025-03-01"
 
+# Production-safe template:
+# - Keep only non-secret values in [vars]
+# - Set secrets with `wrangler secret put <NAME>`
+# Required secrets:
+# - CONVEX_ADMIN_KEY
+# - GOOGLE_CLIENT_SECRET
+# - PAIRWISE_SECRET
+# - ADMIN_SECRET
+
 [vars]
 ISSUER = "https://auth.adityavs.tech"
-ENVIRONMENT = "development"
+ENVIRONMENT = "production"
 DOCS_BASE_URL = "https://docs.auth.adityavs.tech"
-CONVEX_URL = ""
-CONVEX_ADMIN_KEY = ""
-GOOGLE_CLIENT_ID = ""
-GOOGLE_CLIENT_SECRET = ""
-GOOGLE_REDIRECT_URI = ""
-PAIRWISE_SECRET = "dev_pairwise_secret"
+CONVEX_URL = "https://<your-production-convex-deployment>.convex.cloud"
+GOOGLE_CLIENT_ID = "<your-google-client-id>"
+GOOGLE_REDIRECT_URI = "https://auth.adityavs.tech/auth/google/callback"

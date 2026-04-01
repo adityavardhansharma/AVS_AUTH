@@ -8,13 +8,13 @@ Add this to your HTML:
 
 ```html
 <script src="https://auth.adityavs.tech/avs-auth.js"></script>
-<a data-avs-auth href="#">Sign In</a>
+<a href="https://auth.adityavs.tech/authorize?redirect_uri=https://yourapp.com/avs-auth/callback">Sign In</a>
 ```
 
 That's it. The script will:
 
 - Auto-handle the callback when the user returns to `/avs-auth/callback`
-- Upgrade any `<a data-avs-auth>` or `<button data-avs-auth>` to sign-in triggers
+- Upgrade qualifying `/authorize?...` links into PKCE sign-in starts
 - Start a session monitor that dispatches `avs-auth:login-required` when the session expires
 
 ### Script tag options
@@ -24,12 +24,12 @@ Configure via `data-*` attributes:
 ```html
 <script
   src="https://auth.adityavs.tech/avs-auth.js"
-  data-callback-path="/auth/callback"
-  data-request-pii="true"
-  data-auto-handle-callback="true"
-  data-monitor-session="true"
-  data-session-monitor-interval-ms="60000"
-  data-storage-key="avs_auth_identity"
+  data-avs-callback-path="/auth/callback"
+  data-avs-pii="true"
+  data-avs-auto-callback="true"
+  data-avs-auto-session-monitor="true"
+  data-avs-session-monitor-interval-ms="60000"
+  data-avs-storage-key="avs_auth_identity"
 ></script>
 ```
 

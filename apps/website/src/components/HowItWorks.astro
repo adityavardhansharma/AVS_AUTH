@@ -1,0 +1,152 @@
+---
+// How it works section — protocol overview
+const steps = [
+  {
+    num: '1',
+    title: 'User visits your app',
+    desc: 'Your app redirects to auth.adityavs.tech/authorize with PKCE challenge. No pre-registration needed.',
+    code: 'GET /authorize?response_type=code&redirect_uri=...',
+  },
+  {
+    num: '2',
+    title: 'User signs in once',
+    desc: 'If the user has no session, they sign in via Google at the broker. Existing sessions skip this step.',
+    code: 'Google OAuth → Broker Session Cookie (14d)',
+  },
+  {
+    num: '3',
+    title: 'Consent & redirect',
+    desc: 'User approves your app (first time only). Broker redirects back with an authorization code.',
+    code: 'redirect_uri?code=abc123&state=...',
+  },
+  {
+    num: '4',
+    title: 'Token exchange',
+    desc: 'Your app exchanges the code for an id_token. The subject is pairwise — unique to your origin.',
+    code: 'POST /token → { id_token: "eyJ..." }',
+  },
+];
+---
+
+<section class="how-it-works" id="how-it-works">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-label">PROTOCOL</span>
+      <h2 class="section-title">How it works</h2>
+    </div>
+
+    <div class="steps">
+      {steps.map((step) => (
+        <div class="step">
+          <div class="step-num">{step.num}</div>
+          <div class="step-content">
+            <h3 class="step-title">{step.title}</h3>
+            <p class="step-desc">{step.desc}</p>
+            <code class="step-code">{step.code}</code>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .how-it-works {
+    padding: 80px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .section-header {
+    margin-bottom: 48px;
+  }
+
+  .section-label {
+    font-family: var(--font-display);
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    color: var(--yellow);
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .step {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    gap: 24px;
+    padding: 32px 0;
+    border-bottom: 1px solid var(--border);
+    transition: all var(--transition);
+  }
+
+  .step:first-child {
+    border-top: 1px solid var(--border);
+  }
+
+  .step:hover {
+    padding-left: 12px;
+  }
+
+  .step-num {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 1.5rem;
+    color: var(--yellow);
+    opacity: 0.6;
+    padding-top: 2px;
+  }
+
+  .step-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .step-title {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 1.1rem;
+    letter-spacing: -0.01em;
+  }
+
+  .step-desc {
+    font-size: 0.9rem;
+    opacity: 0.6;
+    max-width: 560px;
+    line-height: 1.6;
+  }
+
+  .step-code {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--yellow);
+    background: rgba(235, 255, 0, 0.06);
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(235, 255, 0, 0.1);
+    display: inline-block;
+    max-width: fit-content;
+    margin-top: 4px;
+  }
+
+  @media (max-width: 600px) {
+    .step {
+      grid-template-columns: 40px 1fr;
+      gap: 16px;
+    }
+  }
+</style>

@@ -1,4 +1,4 @@
-import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { exportJWK, generateKeyPair, importJWK, jwtVerify, SignJWT } from "jose";
 import type {
   BrokerUserProfile,
   IdentityClaims,
@@ -332,7 +332,7 @@ export function createOpenIdConfiguration(issuer = DEFAULT_ISSUER): OpenIdConfig
     response_types_supported: ["code"],
     subject_types_supported: ["pairwise"],
     id_token_signing_alg_values_supported: ["ES256"],
-    token_endpoint_auth_methods_supported: ["none"],
+    token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
     code_challenge_methods_supported: ["S256"],
     claims_supported: [
       "iss",
@@ -372,6 +372,40 @@ export function asSessionCheckReason(reason: string): SessionCheckReason {
     return reason;
   }
   return "invalid_token";
+}
+
+export async function verifyIdToken(input: {
+  token: string;
+  publicKeys: Jwk[];
+  issuer: string;
+}): Promise<{ valid: true; claims: IdentityClaims } | { valid: false; claims: null }> {
+  try {
+    const headerPart = input.token.split(".")[0];
+    if (!headerPart) return { valid: false, claims: null };
+    const headerJson = atob(headerPart.replace(/-/g, "+").replace(/_/g, "/"));
+    const header = JSON.parse(headerJson) as { kid?: string };
+    const kid = header.kid;
+    const jwk = kid ? input.publicKeys.find((k) => k.kid === kid) : input.publicKeys[0];
+    if (!jwk) return { valid: false, claims: null };
+    const key = await importJWK(jwk, "ES256");
+    const { payload } = await jwtVerify(input.token, key as CryptoKey, {
+      issuer: input.issuer
+    });
+    return { valid: true, claims: payload as unknown as IdentityClaims };
+  } catch {
+    return { valid: false, claims: null };
+  }
+}
+
+export async function importPrivateKeyFromJwk(jwkJson: string): Promise<CryptoKey> {
+  const jwk = JSON.parse(jwkJson);
+  const key = await importJWK(jwk, "ES256");
+  return key as CryptoKey;
+}
+
+export async function exportPrivateKeyToJwk(privateKey: CryptoKey): Promise<string> {
+  const jwk = await exportJWK(privateKey);
+  return JSON.stringify(jwk);
 }
 
 function parseRedirectUri(redirectUri: string, env: "development" | "production"): URL {

@@ -21,6 +21,32 @@ import type {
 export { createAvsAuth, decodeIdentityClaims };
 export type { UseAvsAuthOptions, UseAvsAuthResult };
 
+const REFRESH_LEEWAY_MS = 30_000;
+
+function readStoredTokenState(client: AvsAuthClient): {
+  userId: string | null;
+  token: string | null;
+  expiresAtMs: number | null;
+} {
+  const identity = client.getIdentity();
+  const token = identity.token ?? null;
+  if (!token) return { userId: identity.userId, token: null, expiresAtMs: null };
+  const claims = decodeIdentityClaims(token);
+  return {
+    userId: identity.userId,
+    token,
+    expiresAtMs: typeof claims?.exp === "number" ? claims.exp * 1000 : null
+  };
+}
+
+function hasExpired(expiresAtMs: number | null): boolean {
+  return expiresAtMs !== null && expiresAtMs <= Date.now();
+}
+
+function expiresSoon(expiresAtMs: number | null): boolean {
+  return expiresAtMs !== null && expiresAtMs - Date.now() <= REFRESH_LEEWAY_MS;
+}
+
 export function createAvsConvexAuth(options: AvsAuthOptions): {
   useAuth: () => {
     isLoading: boolean;
@@ -31,23 +57,67 @@ export function createAvsConvexAuth(options: AvsAuthOptions): {
   signOut: () => void;
 } {
   const client = createAvsAuth(options);
+  let refreshInFlight: Promise<void> | null = null;
+
+  function beginReauth(): Promise<void> {
+    if (refreshInFlight) return refreshInFlight;
+    refreshInFlight = client
+      .startSignIn()
+      .then(() => undefined)
+      .finally(() => {
+        refreshInFlight = null;
+      });
+    return refreshInFlight;
+  }
 
   function useAuth() {
     const [isLoading, setIsLoading] = useState(true);
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isAuthenticated, setIsAuthenticated] = useState(() => {
+      const state = readStoredTokenState(client);
+      return state.userId !== null && state.token !== null && !hasExpired(state.expiresAtMs);
+    });
+
+    const ran = useRef(false);
 
     useEffect(() => {
-      void client.handleCallback().finally(() => {
-        const identity = client.getIdentity();
-        setIsAuthenticated(Boolean(identity.userId && identity.token));
+      if (ran.current) return;
+      ran.current = true;
+      client.handleCallback().finally(() => {
+        const state = readStoredTokenState(client);
+        if (state.token && hasExpired(state.expiresAtMs)) {
+          client.clearIdentity();
+          setIsAuthenticated(false);
+        } else {
+          setIsAuthenticated(state.userId !== null && state.token !== null);
+        }
         setIsLoading(false);
       });
     }, []);
 
-    const fetchAccessToken = useCallback(async () => {
-      const identity = client.getIdentity();
-      return identity.token ?? null;
-    }, []);
+    const fetchAccessToken = useCallback(
+      async (opts: { forceRefreshToken: boolean }) => {
+        const state = readStoredTokenState(client);
+        if (!state.token || state.userId === null) {
+          setIsAuthenticated(false);
+          return null;
+        }
+        if (hasExpired(state.expiresAtMs)) {
+          client.clearIdentity();
+          setIsAuthenticated(false);
+          if (opts.forceRefreshToken) {
+            void beginReauth().catch(() => undefined);
+          }
+          return null;
+        }
+        if (opts.forceRefreshToken && expiresSoon(state.expiresAtMs)) {
+          void beginReauth().catch(() => undefined);
+          return null;
+        }
+        setIsAuthenticated(true);
+        return state.token;
+      },
+      []
+    );
 
     return { isLoading, isAuthenticated, fetchAccessToken };
   }
@@ -189,7 +259,7 @@ export function useAvsAuth(options: UseAvsAuthOptions = {}): UseAvsAuthResult {
     if (loading || options.autoSessionMonitor === false) {
       return;
     }
-    // When monitor starts with no token, set sessionState to login_required (Shoo parity)
+    // When monitor starts with no token, set sessionState to login_required.
     if (!identity.token) {
       setSessionState("login_required");
       return;

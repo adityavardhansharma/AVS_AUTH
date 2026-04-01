@@ -73,6 +73,13 @@ export default defineSchema({
     pairwiseSub: v.string(),
     createdAt: v.number()
   }).index("by_user_id_client_id", ["userId", "clientId"]).index("by_pairwise_sub", ["pairwiseSub"]),
+  // SENSITIVE TABLE — `encryptedPrivateJwk` currently stores plain JWK JSON
+  // (not encrypted despite the field name). Treat as sensitive at rest:
+  //   • Convex access rules should restrict reads to internal functions only.
+  //   • TODO: wrap value with KMS envelope encryption before insert, decrypt
+  //     on read inside the edge-gateway signer. Renaming the field to
+  //     `privateJwk` would require a schema migration; keeping the name as a
+  //     reminder that encryption is the intended end-state.
   signing_keys: defineTable({
     kid: v.string(),
     publicJwk: v.any(),

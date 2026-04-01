@@ -6,13 +6,16 @@ import {
   createOpenIdConfiguration,
   deriveClientIdFromRedirectUri,
   derivePairwiseSub,
+  exportPrivateKeyToJwk,
   generateSigningKeySet,
+  importPrivateKeyFromJwk,
   isCodeRedeemable,
   issueIdToken,
   OidcError,
   shouldIncludePiiClaims,
   validateAuthorizeRequest,
   validateTokenRequest,
+  verifyIdToken,
   verifyPkce
 } from "../src/index";
 
@@ -288,6 +291,7 @@ describe("oidc-core", () => {
     expect(config.issuer).toBe("https://auth.adityavs.tech");
     expect(config.code_challenge_methods_supported).toEqual(["S256"]);
     expect(config.subject_types_supported).toEqual(["pairwise"]);
+    expect(config.token_endpoint_auth_methods_supported).toEqual(["none", "client_secret_post"]);
   });
 
   // --- Key generation ---
@@ -352,5 +356,114 @@ describe("oidc-core", () => {
     expect(new OidcError("invalid_grant", "bad").status).toBe(401);
     expect(new OidcError("access_denied", "bad").status).toBe(403);
     expect(new OidcError("server_error", "bad").status).toBe(500);
+  });
+
+  // --- verifyIdToken ---
+  it("verifyIdToken returns valid:true for a correctly signed token", async () => {
+    const keys = await generateSigningKeySet();
+    const issued = await issueIdToken({
+      audience: "origin:https://app.com",
+      pairwiseSub: "ps_verify",
+      user: { googleSub: "g1" },
+      privateKey: keys.privateKey,
+      kid: keys.kid,
+      issuer: "https://auth.adityavs.tech"
+    });
+    const result = await verifyIdToken({
+      token: issued.token,
+      publicKeys: [keys.publicJwk],
+      issuer: "https://auth.adityavs.tech"
+    });
+    expect(result.valid).toBe(true);
+    if (result.valid) {
+      expect(result.claims.sub).toBe("ps_verify");
+      expect(result.claims.aud).toBe("origin:https://app.com");
+    }
+  });
+
+  it("verifyIdToken returns valid:false for token with wrong issuer", async () => {
+    const keys = await generateSigningKeySet();
+    const issued = await issueIdToken({
+      audience: "origin:https://app.com",
+      pairwiseSub: "ps_verify",
+      user: { googleSub: "g1" },
+      privateKey: keys.privateKey,
+      kid: keys.kid,
+      issuer: "https://wrong.issuer.com"
+    });
+    const result = await verifyIdToken({
+      token: issued.token,
+      publicKeys: [keys.publicJwk],
+      issuer: "https://auth.adityavs.tech"
+    });
+    expect(result.valid).toBe(false);
+    expect(result.claims).toBeNull();
+  });
+
+  it("verifyIdToken returns valid:false for tampered token", async () => {
+    const keys = await generateSigningKeySet();
+    const issued = await issueIdToken({
+      audience: "origin:https://app.com",
+      pairwiseSub: "ps_verify",
+      user: { googleSub: "g1" },
+      privateKey: keys.privateKey,
+      kid: keys.kid
+    });
+    // Tamper with the payload
+    const parts = issued.token.split(".");
+    const tamperedToken = `${parts[0]}.${parts[1]}x.${parts[2]}`;
+    const result = await verifyIdToken({
+      token: tamperedToken,
+      publicKeys: [keys.publicJwk],
+      issuer: "https://auth.adityavs.tech"
+    });
+    expect(result.valid).toBe(false);
+  });
+
+  it("verifyIdToken returns valid:false for token signed by a different key", async () => {
+    const signingKeys = await generateSigningKeySet();
+    const otherKeys = await generateSigningKeySet();
+    const issued = await issueIdToken({
+      audience: "origin:https://app.com",
+      pairwiseSub: "ps_verify",
+      user: { googleSub: "g1" },
+      privateKey: signingKeys.privateKey,
+      kid: signingKeys.kid
+    });
+    const result = await verifyIdToken({
+      token: issued.token,
+      publicKeys: [otherKeys.publicJwk], // Different key
+      issuer: "https://auth.adityavs.tech"
+    });
+    expect(result.valid).toBe(false);
+  });
+
+  // --- exportPrivateKeyToJwk / importPrivateKeyFromJwk ---
+  it("round-trips private key through export/import", async () => {
+    const keys = await generateSigningKeySet();
+    const exported = await exportPrivateKeyToJwk(keys.privateKey);
+    expect(typeof exported).toBe("string");
+    const parsed = JSON.parse(exported);
+    expect(parsed.kty).toBe("EC");
+    expect(parsed.crv).toBe("P-256");
+    expect(parsed.d).toBeTruthy(); // private key component
+
+    // Import it back and sign a token
+    const importedKey = await importPrivateKeyFromJwk(exported);
+    const issued = await issueIdToken({
+      audience: "origin:https://app.com",
+      pairwiseSub: "ps_roundtrip",
+      user: { googleSub: "g1" },
+      privateKey: importedKey,
+      kid: keys.kid
+    });
+
+    // Verify the token signed with the imported key
+    const result = await verifyIdToken({
+      token: issued.token,
+      publicKeys: [keys.publicJwk],
+      issuer: "https://auth.adityavs.tech"
+    });
+    expect(result.valid).toBe(true);
   });
 });

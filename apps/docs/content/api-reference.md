@@ -28,7 +28,7 @@ Returns: `{ status: "active" }` or `{ status: "login_required", reason }`
 
 ### POST /logout
 
-Clears the broker session and cookie. Returns: `{ status: "ok" }`
+Clears the broker session and cookie, then redirects (302) to `/`.
 
 ## @avs-auth/auth
 
@@ -73,4 +73,4 @@ All TypeScript types exported: `CodeChallengeMethod`, `AuthorizeRequest`, `Token
 
 ## window.AvsAuth (hosted script)
 
-The hosted script at `/avs-auth.js` initialises via `bootstrapHostedScript` and exposes the SDK on `window.AvsAuth`. The object is an `AvsAuthClient` (returned by `createAvsAuth`) so all client methods are available: `startSignIn`, `finishSignIn`, `handleCallback`, `checkSession`, `startSessionMonitor`, `getIdentity`, `persistIdentity`, `clearIdentity`, `decodeIdentityClaims`, `createPkceBundle`, `createSignInUrl`, `parseCallback`, `clearCallbackParams`, plus `defaults`.
+The hosted script is served at `/avs-auth.js` and exposes the SDK on `window.AvsAuth`. The object provides the browser auth methods: `startSignIn`, `finishSignIn`, `handleCallback`, `checkSession`, `startSessionMonitor`, `getIdentity`, `persistIdentity`, `clearIdentity`, `decodeIdentityClaims`, `createPkceBundle`, `createSignInUrl`, `parseCallback`, `clearCallbackParams`, plus `defaults`.

@@ -70,6 +70,13 @@ function requireBrowser(api: string): void {
   }
 }
 
+function assertNoClientSecretOption(value: unknown, apiName: string): void {
+  if (!value || typeof value !== "object" || !("clientSecret" in value)) return;
+  const clientSecret = (value as Record<string, unknown>).clientSecret;
+  if (clientSecret === undefined) return;
+  throw new Error(`${apiName} no longer accepts clientSecret in browser code. Use a server-side token exchange.`);
+}
+
 function randomString(length = 64): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
   const random = crypto.getRandomValues(new Uint8Array(length));
@@ -276,6 +283,7 @@ export function decodeIdentityClaims(idToken?: string): IdentityClaims | null {
 }
 
 export async function exchangeCode(params: ExchangeCodeParams): Promise<TokenResponse> {
+  assertNoClientSecretOption(params, "exchangeCode");
   const endpoint = new URL("/token", params.avsBaseUrl).toString();
   const response = await fetch(endpoint, {
     method: "POST",
@@ -292,7 +300,8 @@ export async function exchangeCode(params: ExchangeCodeParams): Promise<TokenRes
   });
 
   if (!response.ok) {
-    throw new Error(`Token exchange failed (${response.status})`);
+    const details = await response.text();
+    throw new Error(`Token exchange failed (${response.status}): ${details || "no details"}`);
   }
   return (await response.json()) as TokenResponse;
 }
@@ -316,7 +325,7 @@ export async function checkSession(
     return { status: "login_required", reason: "invalid_token" };
   }
 
-  // Pre-validate token audience when clientId or redirectUri is provided (Shoo parity)
+  // Pre-validate token audience when clientId or redirectUri is provided.
   const expectedClientId = resolveClientIdForCheck(params);
   if (expectedClientId) {
     const claims = decodeIdentityClaims(token);
@@ -336,7 +345,14 @@ export async function checkSession(
     return { status: "unsupported" };
   }
 
-  // Strict response parsing (Shoo parity)
+  // Rate-limited — surface to caller instead of throwing so the app can
+  // back off gracefully (e.g. skip the next monitor tick).
+  if (response.status === 429) {
+    const retryAfter = parseInt(response.headers.get("retry-after") ?? "60", 10);
+    return { status: "rate_limited", retryAfter: Number.isFinite(retryAfter) ? retryAfter : 60 };
+  }
+
+  // Strict response parsing.
   if (response.status === 200) {
     const payload = (await response.json()) as Record<string, unknown>;
     if (payload.status === "active") {
@@ -358,7 +374,7 @@ export async function checkSession(
     return { status: "login_required", reason: "invalid_token" };
   }
 
-  // Throw for unexpected statuses (Shoo parity)
+  // Throw for unexpected statuses.
   throw new Error(`Session check failed (${response.status})`);
 }
 
@@ -388,7 +404,7 @@ export function startSessionMonitor(options: SessionMonitorOptions = {}): Sessio
       const result = await checkSession(options);
       if (result.status === "login_required") {
         options.onLoginRequired?.(result);
-        stop(); // Auto-stop after first login_required (Shoo parity)
+        stop(); // Auto-stop after first login_required.
       }
     } catch (error) {
       options.onError?.(error instanceof Error ? error : new Error("Unexpected session check failure"));
@@ -456,6 +472,7 @@ export function createAvsAuth(options: AvsAuthOptions = {}): AvsAuthClient {
     params?: FinishSignInOptions
   ): Promise<{ token: TokenResponse | null; storedReturnTo: string | null }> => {
     requireBrowser("finishSignIn");
+    assertNoClientSecretOption(params, "clientFinishSignIn");
     const callback = parseCallback(params?.url ?? window.location.href);
     if (!callback) {
       return { token: null, storedReturnTo: null };
@@ -593,6 +610,7 @@ export function createAvsAuth(options: AvsAuthOptions = {}): AvsAuthClient {
     finishSignIn: async (params) => (await finishSignInInternal(params)).token,
     handleCallback: async (params) => {
       requireBrowser("handleCallback");
+      assertNoClientSecretOption(params, "clientHandleCallback");
       const { token, storedReturnTo } = await finishSignInInternal({
         url: params?.url,
         redirectAfter: false,

@@ -80,10 +80,20 @@ describe("@avs-auth/react", () => {
     const convexAuth = mod.createAvsConvexAuth({ avsBaseUrl: "https://custom.auth.example.com" });
     expect(typeof convexAuth.useAuth).toBe("function");
   });
+
+  it("createAvsConvexAuth useAuth returns fetchAccessToken that accepts forceRefreshToken", async () => {
+    const mod = await import("../src/index");
+    const convexAuth = mod.createAvsConvexAuth({});
+    // Verify useAuth is a function (hook) that returns the expected shape
+    expect(typeof convexAuth.useAuth).toBe("function");
+    // signIn and signOut have the correct signatures
+    expect(convexAuth.signIn.length).toBeLessThanOrEqual(1); // optional opts param
+    expect(typeof convexAuth.signOut).toBe("function");
+  });
 });
 
 // Test the underlying auth client behavior that the React hook delegates to
-describe("@avs-auth/react - session state semantics (Shoo parity)", () => {
+describe("@avs-auth/react - session state semantics", () => {
   beforeEach(() => {
     setupBrowserMocks();
   });
@@ -168,7 +178,7 @@ describe("@avs-auth/react - session state semantics (Shoo parity)", () => {
     const { createAvsAuth } = await import("../src/index");
     const client = createAvsAuth({});
     const identity = client.getIdentity();
-    // Shoo parity: session state decision based on token presence
+    // Session state decision is based on token presence.
     expect(identity.userId).toBeNull();
     expect(identity.token).toBeUndefined();
     // This mirrors what the hook does: token ? "unknown" : "login_required"

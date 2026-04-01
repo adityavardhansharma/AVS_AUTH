@@ -1,6 +1,6 @@
 # AVS AUTH Test Matrix
 
-Every parity item needs one automated test and one manual acceptance step before release.
+Every release item needs one automated test and one manual acceptance step before release.
 
 ## Protocol
 

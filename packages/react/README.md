@@ -1,6 +1,6 @@
 # @avs-auth/react
 
-React hooks wrapper for `@avs-auth/auth`, aligned to the public Shoo React package surface.
+React hooks wrapper for `@avs-auth/auth`.
 
 ## Install
 

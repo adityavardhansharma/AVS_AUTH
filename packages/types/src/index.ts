@@ -124,7 +124,10 @@ export type CheckSessionOptions = {
   clientId?: string;
 };
 
-export type SessionCheckResult = SessionCheckResponse | { status: "unsupported" };
+export type SessionCheckResult =
+  | SessionCheckResponse
+  | { status: "unsupported" }
+  | { status: "rate_limited"; retryAfter: number };
 
 export type SessionMonitorOptions = CheckSessionOptions & {
   intervalMs?: number;

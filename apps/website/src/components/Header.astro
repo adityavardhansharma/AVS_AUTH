@@ -1,0 +1,173 @@
+---
+// Site header with logo and status pill
+---
+
+<header class="header">
+  <div class="header-inner container">
+    <a href="/" class="logo" aria-label="AVS AUTH Home">
+      avs auth
+    </a>
+
+    <nav class="nav-links">
+      <a href="/docs" class="nav-link">Docs</a>
+      <a
+        href="https://auth.adityavs.tech/sign-in"
+        class="session-pill"
+        target="_blank"
+        rel="noopener"
+      >
+        <span class="session-text">Open Session</span>
+        <span class="session-arrow">&rarr;</span>
+      </a>
+      <a href="https://github.com" class="status-pill" target="_blank" rel="noopener">
+        <span class="status-indicator"></span>
+        <span class="status-text">GitHub</span>
+        <span class="status-badge">SOON</span>
+        <span class="status-arrow">&rarr;</span>
+      </a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .header {
+    padding: 20px 0;
+    position: relative;
+    z-index: 10;
+  }
+
+  .header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 900;
+    color: var(--white);
+    text-decoration: none;
+    letter-spacing: -0.02em;
+    transition: color var(--transition);
+  }
+
+  .logo:hover {
+    color: var(--yellow);
+    opacity: 1;
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .nav-link {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--white);
+    opacity: 0.6;
+    text-decoration: none;
+    transition: opacity var(--transition);
+  }
+
+  .nav-link:hover {
+    opacity: 1;
+  }
+
+  .session-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--yellow);
+    border: 1px solid var(--yellow);
+    border-radius: 999px;
+    color: var(--black);
+    font-family: var(--font-display);
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    text-decoration: none;
+    transition: transform var(--transition), box-shadow var(--transition);
+  }
+
+  .session-pill:hover {
+    opacity: 1;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(235, 255, 0, 0.18);
+  }
+
+  .session-arrow {
+    transition: transform var(--transition);
+  }
+
+  .session-pill:hover .session-arrow {
+    transform: translateX(3px);
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--white);
+    font-size: 0.8rem;
+    transition: all var(--transition);
+    text-decoration: none;
+  }
+
+  .status-pill:hover {
+    border-color: var(--yellow);
+    background: var(--yellow-dim);
+    opacity: 1;
+  }
+
+  .status-pill:hover .status-arrow {
+    transform: translateX(3px);
+  }
+
+  .status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--yellow);
+    animation: pulse 2s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  .status-text {
+    font-family: var(--font-mono);
+  }
+
+  .status-badge {
+    font-family: var(--font-display);
+    font-size: 0.55rem;
+    font-weight: 900;
+    background: var(--yellow);
+    color: var(--black);
+    padding: 1px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+  }
+
+  .status-arrow {
+    transition: transform var(--transition);
+    opacity: 0.5;
+  }
+
+  @media (max-width: 600px) {
+    .nav-link {
+      display: none;
+    }
+    .session-text {
+      display: none;
+    }
+    .status-text {
+      display: none;
+    }
+  }
+</style>

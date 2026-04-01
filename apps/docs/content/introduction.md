@@ -1,6 +1,6 @@
 # AVS AUTH
 
-AVS AUTH is a minimal, privacy-first authentication broker for web applications. It provides Shoo-style pairwise OIDC identity with zero-dashboard client registration.
+AVS AUTH is a minimal, privacy-first authentication broker for web applications. It provides pairwise OIDC identity with zero-dashboard client registration.
 
 ## How it works
 
