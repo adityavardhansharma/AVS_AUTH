@@ -386,6 +386,11 @@ export function startSessionMonitor(options: SessionMonitorOptions = {}): Sessio
   );
   let stopped = false;
   let inFlight = false;
+  let backoffTimeoutId: ReturnType<typeof window.setTimeout> | null = null;
+
+  let timer = window.setInterval(() => {
+    void runCheck();
+  }, intervalMs);
 
   const stop = (): void => {
     if (stopped) {
@@ -393,6 +398,10 @@ export function startSessionMonitor(options: SessionMonitorOptions = {}): Sessio
     }
     stopped = true;
     window.clearInterval(timer);
+    if (backoffTimeoutId !== null) {
+      window.clearTimeout(backoffTimeoutId);
+      backoffTimeoutId = null;
+    }
   };
 
   const runCheck = async (): Promise<void> => {
@@ -405,6 +414,20 @@ export function startSessionMonitor(options: SessionMonitorOptions = {}): Sessio
       if (result.status === "login_required") {
         options.onLoginRequired?.(result);
         stop(); // Auto-stop after first login_required.
+      } else if (result.status === "rate_limited") {
+        // Pause the fixed-interval timer and resume after the server-specified
+        // retry-after window so we don't keep hammering a throttled endpoint.
+        window.clearInterval(timer);
+        const backoffMs = Math.max(1000, result.retryAfter * 1000);
+        backoffTimeoutId = window.setTimeout(() => {
+          backoffTimeoutId = null;
+          if (!stopped) {
+            timer = window.setInterval(() => {
+              void runCheck();
+            }, intervalMs);
+            void runCheck();
+          }
+        }, backoffMs);
       }
     } catch (error) {
       options.onError?.(error instanceof Error ? error : new Error("Unexpected session check failure"));
@@ -413,9 +436,6 @@ export function startSessionMonitor(options: SessionMonitorOptions = {}): Sessio
     }
   };
 
-  const timer = window.setInterval(() => {
-    void runCheck();
-  }, intervalMs);
   if (options.immediate !== false) {
     void runCheck();
   }

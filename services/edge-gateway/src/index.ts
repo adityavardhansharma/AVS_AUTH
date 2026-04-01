@@ -180,8 +180,9 @@ async function audit(env: Env, params: {
       ...params,
       createdAt: Date.now()
     });
-  } catch {
-    // Audit failures should not break the request
+  } catch (err) {
+    // Audit failures must not break the request, but log so they're observable.
+    console.error("[audit] Failed to record audit event:", err);
   }
 }
 
@@ -322,11 +323,12 @@ function footerHtml(env: Env): string {
   return `<footer><span>Free & OSS</span><div class="footer-links"><a href="/">Home</a><a href="${docsUrl}">Docs</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div></footer>`;
 }
 
-function normalizeReturnTo(value: string | null): string | null {
+function normalizeReturnTo(value: string | null, issuer: string): string | null {
   if (!value) return null;
   try {
-    const parsed = new URL(value, "https://auth.adityavs.tech");
-    if (parsed.origin !== "https://auth.adityavs.tech") return null;
+    const issuerOrigin = new URL(issuer).origin;
+    const parsed = new URL(value, issuerOrigin);
+    if (parsed.origin !== issuerOrigin) return null;
     const route = `${parsed.pathname}${parsed.search}${parsed.hash}`;
     if (!route.startsWith("/") || route.startsWith("//")) return null;
     return route;
@@ -1227,7 +1229,7 @@ export default {
           return html("No Session", `<div class="card"><h1>Not signed in</h1><p>Sign in to manage authorized sites.</p><a class="btn" href="/sign-in">Sign In</a></div>${footerHtml(env)}`, { status: 401 });
         }
         const clientId = body.get("client_id") ?? "";
-        const returnTo = normalizeReturnTo(body.get("return_to")) ?? "/authorized-sites";
+        const returnTo = normalizeReturnTo(body.get("return_to"), env.ISSUER) ?? "/authorized-sites";
         if (clientId) {
           if (convex(env)) {
             await cvxM(env, "consents:revokeConsent", { userId: user.userId, clientId });
@@ -1255,6 +1257,8 @@ export default {
           return html("No Session", `<div class="card"><h1>Not signed in</h1><p>Sign in to manage your account.</p><a class="btn" href="/sign-in">Sign In</a></div>${footerHtml(env)}`, { status: 401 });
         }
 
+        await deleteUserAccount(user.userId, env);
+
         void audit(env, {
           actorType: "user",
           actorId: user.userId,
@@ -1263,8 +1267,6 @@ export default {
           targetId: user.userId,
           correlationId: reqId
         });
-
-        await deleteUserAccount(user.userId, env);
 
         const headers = new Headers();
         headers.set("set-cookie", clearSessionCookie(env));

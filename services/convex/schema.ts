@@ -57,7 +57,7 @@ export default defineSchema({
     ),
     createdAt: v.number(),
     expiresAt: v.number()
-  }).index("by_transaction_id", ["transactionId"]).index("by_state", ["state"]),
+  }).index("by_transaction_id", ["transactionId"]).index("by_state", ["state"]).index("by_user_id", ["userId"]),
   authorization_codes: defineTable({
     code: v.string(),
     transactionId: v.string(),
@@ -66,7 +66,7 @@ export default defineSchema({
     userId: v.string(),
     redeemedAt: v.optional(v.number()),
     expiresAt: v.number()
-  }).index("by_code", ["code"]),
+  }).index("by_code", ["code"]).index("by_user_id", ["userId"]),
   pairwise_subjects: defineTable({
     userId: v.string(),
     clientId: v.string(),

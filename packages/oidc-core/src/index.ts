@@ -382,10 +382,24 @@ export async function verifyIdToken(input: {
   try {
     const headerPart = input.token.split(".")[0];
     if (!headerPart) return { valid: false, claims: null };
-    const headerJson = atob(headerPart.replace(/-/g, "+").replace(/_/g, "/"));
+    // Restore standard base64 padding before decoding (base64url strips it).
+    const base64 = headerPart.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const headerJson = atob(padded);
     const header = JSON.parse(headerJson) as { kid?: string };
     const kid = header.kid;
-    const jwk = kid ? input.publicKeys.find((k) => k.kid === kid) : input.publicKeys[0];
+    let jwk: Jwk | undefined;
+    if (kid) {
+      jwk = input.publicKeys.find((k) => k.kid === kid);
+      if (!jwk) {
+        // A kid was present but matched no known key — reject explicitly rather
+        // than silently falling back, which could allow key-confusion attacks.
+        console.warn(`[verifyIdToken] No public key found for kid="${kid}"`);
+        return { valid: false, claims: null };
+      }
+    } else {
+      jwk = input.publicKeys[0];
+    }
     if (!jwk) return { valid: false, claims: null };
     const key = await importJWK(jwk, "ES256");
     const { payload } = await jwtVerify(input.token, key as CryptoKey, {
