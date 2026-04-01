@@ -1,0 +1,81 @@
+---
+// Site footer
+---
+
+<footer class="footer">
+  <div class="footer-inner container">
+    <div class="footer-left">
+      <span class="footer-brand">avs auth</span>
+      <span class="footer-meta">Privacy-first authentication broker</span>
+    </div>
+
+    <div class="footer-links">
+      <a href="/docs" class="footer-link">Docs</a>
+      <a href="https://auth.adityavs.tech" class="footer-link" target="_blank" rel="noopener">Broker</a>
+      <a href="https://auth.adityavs.tech/privacy" class="footer-link" target="_blank" rel="noopener">Privacy</a>
+      <a href="https://auth.adityavs.tech/terms" class="footer-link" target="_blank" rel="noopener">Terms</a>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    padding: 32px 0;
+    border-top: 1px solid var(--border);
+    margin-top: 40px;
+  }
+
+  .footer-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .footer-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .footer-brand {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 0.85rem;
+    opacity: 0.5;
+  }
+
+  .footer-meta {
+    font-size: 0.75rem;
+    opacity: 0.3;
+  }
+
+  .footer-links {
+    display: flex;
+    gap: 24px;
+  }
+
+  .footer-link {
+    font-size: 0.8rem;
+    color: var(--white);
+    opacity: 0.4;
+    text-decoration: none;
+    transition: opacity var(--transition);
+  }
+
+  .footer-link:hover {
+    opacity: 1;
+  }
+
+  @media (max-width: 600px) {
+    .footer-inner {
+      flex-direction: column;
+      gap: 16px;
+      text-align: center;
+    }
+
+    .footer-left {
+      flex-direction: column;
+      gap: 4px;
+    }
+  }
+</style>

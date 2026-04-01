@@ -1,0 +1,175 @@
+---
+// OIDC Endpoints reference table
+const endpoints = [
+  { method: 'GET', path: '/authorize', desc: 'Start OIDC authorization with PKCE S256' },
+  { method: 'POST', path: '/token', desc: 'Exchange authorization code for id_token' },
+  { method: 'POST', path: '/session/check', desc: 'Validate session (active or login_required)' },
+  { method: 'POST', path: '/logout', desc: 'Revoke broker session' },
+  { method: 'GET', path: '/.well-known/openid-configuration', desc: 'OIDC discovery document' },
+  { method: 'GET', path: '/.well-known/jwks.json', desc: 'Public signing keys (ES256)' },
+  { method: 'GET', path: '/avs-auth.js', desc: 'Hosted browser script' },
+];
+---
+
+<section class="endpoints" id="endpoints">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-label">API</span>
+      <h2 class="section-title">Endpoints</h2>
+    </div>
+
+    <div class="endpoints-table">
+      {endpoints.map((ep) => (
+        <div class="endpoint-row">
+          <span class={`endpoint-method method-${ep.method.toLowerCase()}`}>{ep.method}</span>
+          <code class="endpoint-path">{ep.path}</code>
+          <span class="endpoint-desc">{ep.desc}</span>
+        </div>
+      ))}
+    </div>
+
+    <div class="endpoints-base">
+      <span class="base-label">Base URL</span>
+      <code class="base-url">https://auth.adityavs.tech</code>
+    </div>
+  </div>
+</section>
+
+<style>
+  .endpoints {
+    padding: 80px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .section-header {
+    margin-bottom: 48px;
+  }
+
+  .section-label {
+    font-family: var(--font-display);
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    color: var(--yellow);
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  .endpoints-table {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  .endpoint-row {
+    display: grid;
+    grid-template-columns: 70px 1fr 1fr;
+    gap: 16px;
+    align-items: center;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    transition: background var(--transition);
+  }
+
+  .endpoint-row:last-child {
+    border-bottom: none;
+  }
+
+  .endpoint-row:hover {
+    background: rgba(235, 255, 0, 0.03);
+  }
+
+  .endpoint-method {
+    font-family: var(--font-display);
+    font-size: 0.6rem;
+    font-weight: 900;
+    letter-spacing: 0.05em;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-align: center;
+  }
+
+  .method-get {
+    background: rgba(235, 255, 0, 0.15);
+    color: var(--yellow);
+  }
+
+  .method-post {
+    background: rgba(100, 200, 255, 0.15);
+    color: #64C8FF;
+  }
+
+  .endpoint-path {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--white);
+  }
+
+  .endpoint-desc {
+    font-size: 0.8rem;
+    opacity: 0.45;
+  }
+
+  .endpoints-base {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 20px;
+    padding: 12px 20px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: rgba(235, 255, 0, 0.04);
+  }
+
+  .base-label {
+    font-family: var(--font-display);
+    font-size: 0.6rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    color: var(--yellow);
+    opacity: 0.6;
+  }
+
+  .base-url {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--yellow);
+  }
+
+  @media (max-width: 768px) {
+    .endpoint-row {
+      grid-template-columns: 60px 1fr;
+      gap: 8px;
+    }
+
+    .endpoint-desc {
+      grid-column: 1 / -1;
+      padding-left: 76px;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .endpoint-row {
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+
+    .endpoint-method {
+      width: fit-content;
+    }
+
+    .endpoint-desc {
+      padding-left: 0;
+    }
+  }
+</style>

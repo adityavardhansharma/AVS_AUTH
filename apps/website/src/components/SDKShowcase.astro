@@ -1,0 +1,157 @@
+---
+// SDK showcase — React + Vanilla tabs
+---
+
+<section class="sdk-showcase" id="sdk">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-label">INTEGRATION</span>
+      <h2 class="section-title">Pick your flavor</h2>
+    </div>
+
+    <div class="sdk-grid">
+      <div class="sdk-card">
+        <div class="sdk-card-header">
+          <span class="sdk-badge">REACT</span>
+          <code class="sdk-pkg">@avs-auth/react</code>
+        </div>
+        <pre class="sdk-code"><code><span class="hl-kw">import</span> {"{"} useAvsAuth {"}"} <span class="hl-kw">from</span> <span class="hl-str">"@avs-auth/react"</span>
+
+<span class="hl-kw">function</span> <span class="hl-fn">App</span>() {"{"}<br/>  <span class="hl-kw">const</span> auth = <span class="hl-fn">useAvsAuth</span>({"{"}<br/>    avsBaseUrl: <span class="hl-str">"https://auth.adityavs.tech"</span>,<br/>    callbackPath: <span class="hl-str">"/auth/callback"</span><br/>  {"}"})<br/><br/>  <span class="hl-kw">return</span> (<br/>    &lt;<span class="hl-tag">button</span> <span class="hl-attr">onClick</span>={"{"}() =&gt; auth.<span class="hl-fn">signIn</span>(){"}"}&gt;<br/>      {"{"}auth.identity.userId ?? <span class="hl-str">"Sign In"</span>{"}"}<br/>    &lt;/<span class="hl-tag">button</span>&gt;<br/>  )<br/>{"}"}</code></pre>
+      </div>
+
+      <div class="sdk-card">
+        <div class="sdk-card-header">
+          <span class="sdk-badge">VANILLA JS</span>
+          <code class="sdk-pkg">@avs-auth/auth</code>
+        </div>
+        <pre class="sdk-code"><code><span class="hl-kw">import</span> {"{"} createAvsAuth {"}"} <span class="hl-kw">from</span> <span class="hl-str">"@avs-auth/auth"</span>
+
+<span class="hl-kw">const</span> auth = <span class="hl-fn">createAvsAuth</span>({"{"}<br/>  avsBaseUrl: <span class="hl-str">"https://auth.adityavs.tech"</span>,<br/>  callbackPath: <span class="hl-str">"/auth/callback"</span><br/>{"}"})
+
+<span class="hl-kw">await</span> auth.<span class="hl-fn">startSignIn</span>()
+<span class="hl-kw">await</span> auth.<span class="hl-fn">handleCallback</span>()
+
+<span class="hl-kw">const</span> identity = auth.<span class="hl-fn">getIdentity</span>()
+<span class="hl-cm">// identity.userId — pairwise subject ID</span></code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .sdk-showcase {
+    padding: 80px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .section-header {
+    margin-bottom: 48px;
+  }
+
+  .section-label {
+    font-family: var(--font-display);
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    color: var(--yellow);
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  .sdk-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+
+  .sdk-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: rgba(245, 245, 245, 0.02);
+    transition: all var(--transition);
+  }
+
+  .sdk-card:hover {
+    border-color: rgba(235, 255, 0, 0.2);
+  }
+
+  .sdk-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(235, 255, 0, 0.04);
+  }
+
+  .sdk-badge {
+    font-family: var(--font-display);
+    font-size: 0.6rem;
+    font-weight: 900;
+    color: var(--black);
+    background: var(--yellow);
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+  }
+
+  .sdk-pkg {
+    font-size: 0.7rem;
+    color: var(--yellow);
+    opacity: 0.6;
+  }
+
+  .sdk-code {
+    padding: 20px;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    line-height: 1.7;
+    overflow-x: auto;
+    color: var(--white);
+  }
+
+  .hl-kw {
+    color: var(--white);
+    opacity: 0.7;
+  }
+
+  .hl-str {
+    color: var(--yellow);
+  }
+
+  .hl-fn {
+    color: var(--yellow);
+    opacity: 0.9;
+  }
+
+  .hl-tag {
+    color: var(--white);
+    opacity: 0.8;
+  }
+
+  .hl-attr {
+    color: var(--yellow);
+    opacity: 0.7;
+  }
+
+  .hl-cm {
+    color: var(--white);
+    opacity: 0.3;
+  }
+
+  @media (max-width: 900px) {
+    .sdk-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -1,0 +1,284 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import Header from '../../../components/Header.astro';
+import Footer from '../../../components/Footer.astro';
+---
+
+<Layout title="How It Works — AVS AUTH">
+  <Header />
+  <main class="docs-page container">
+    <div class="docs-header">
+      <a href="/docs" class="back-link">&larr; Back to Docs</a>
+      <span class="section-label">GUIDE</span>
+      <h1 class="docs-title">How It Works</h1>
+    </div>
+
+    <article class="doc-article">
+      <section class="doc-section">
+        <h2 class="doc-heading">The Big Picture</h2>
+        <p>
+          AVS AUTH is an <strong>authentication broker</strong>. It sits between your app and an
+          identity provider (Google). Instead of each app integrating Google OAuth directly, apps
+          delegate authentication to the broker.
+        </p>
+        <p>
+          The key innovation: every app gets a <strong>pairwise subject ID</strong> for each user.
+          This means apps cannot correlate users across different origins. User privacy is
+          preserved by design.
+        </p>
+      </section>
+
+      <section class="doc-section">
+        <h2 class="doc-heading">The Flow</h2>
+        <div class="flow-diagram">
+          <div class="flow-step">
+            <div class="flow-num">1</div>
+            <div class="flow-content">
+              <h3>Authorization Request</h3>
+              <p>
+                Your app redirects the user to <code>/authorize</code> with a PKCE code challenge
+                (S256), a redirect URI, and state parameter. No client registration — your origin
+                IS the client ID.
+              </p>
+              <pre class="doc-code"><code>GET /authorize
+  ?response_type=code
+  &redirect_uri=https://yourapp.com/auth/callback
+  &code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URW...
+  &code_challenge_method=S256
+  &state=random_state_value</code></pre>
+            </div>
+          </div>
+
+          <div class="flow-step">
+            <div class="flow-num">2</div>
+            <div class="flow-content">
+              <h3>User Authentication</h3>
+              <p>
+                If the user has no active broker session, they sign in via Google.
+                If they already have a session (cookie), this step is skipped entirely.
+              </p>
+            </div>
+          </div>
+
+          <div class="flow-step">
+            <div class="flow-num">3</div>
+            <div class="flow-content">
+              <h3>User Consent</h3>
+              <p>
+                First time only: the user sees a consent screen showing your app's origin and
+                what data is being requested. PII (email, name, picture) requires explicit
+                opt-in. Consent can be revoked per-site.
+              </p>
+            </div>
+          </div>
+
+          <div class="flow-step">
+            <div class="flow-num">4</div>
+            <div class="flow-content">
+              <h3>Authorization Code</h3>
+              <p>
+                The broker redirects back to your app with a short-lived authorization code.
+              </p>
+              <pre class="doc-code"><code>302 https://yourapp.com/auth/callback
+  ?code=abc123
+  &state=random_state_value</code></pre>
+            </div>
+          </div>
+
+          <div class="flow-step">
+            <div class="flow-num">5</div>
+            <div class="flow-content">
+              <h3>Token Exchange</h3>
+              <p>
+                Your app exchanges the code + PKCE verifier for an <code>id_token</code>.
+                The token is signed with ES256 and contains a pairwise subject unique to your
+                origin.
+              </p>
+              <pre class="doc-code"><code>POST /token
+Content-Type: application/json
+{"{"} "code": "abc123", "code_verifier": "dBjftJeZ4CVP-mB92K27..." {"}"}
+
+→ {"{"} "id_token": "eyJhbGciOiJFUzI1NiIs..." {"}"}</code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="doc-section">
+        <h2 class="doc-heading">Token Claims</h2>
+        <pre class="doc-code"><code>{"{"}<br/>  "iss": "https://auth.adityavs.tech",<br/>  "aud": "origin:https://yourapp.com",<br/>  "sub": "pairwise_unique_id",<br/>  "pairwise_sub": "pairwise_unique_id",<br/>  "iat": 1712000000,<br/>  "exp": 1712086400,<br/>  "jti": "unique_token_id",<br/>  "email": "user@example.com",    // only if PII consent<br/>  "name": "User Name",            // only if PII consent<br/>  "picture": "https://..."         // only if PII consent<br/>{"}"}</code></pre>
+      </section>
+
+      <section class="doc-section">
+        <h2 class="doc-heading">Session Management</h2>
+        <p>
+          The SDK includes built-in session monitoring. After sign-in, it periodically
+          checks <code>/session/check</code> to detect revoked or expired sessions.
+        </p>
+        <p>
+          When a <code>login_required</code> response is received, the monitor automatically
+          stops polling. The session state transitions to <code>login_required</code> and
+          local identity is cleared.
+        </p>
+        <pre class="doc-code"><code>POST /session/check
+
+→ {"{"} "status": "active" {"}"}
+→ {"{"} "status": "login_required", "reason": "expired" {"}"}</code></pre>
+      </section>
+
+      <section class="doc-section">
+        <h2 class="doc-heading">Privacy Model</h2>
+        <p>
+          The <code>sub</code> claim is derived using HMAC-SHA256 with a per-origin key.
+          Two different apps will never see the same subject ID for the same user.
+          This prevents cross-origin user tracking.
+        </p>
+        <p>
+          PII fields (email, name, picture) are only included if the user explicitly
+          grants PII consent for that specific origin. This consent is revocable.
+        </p>
+      </section>
+    </article>
+  </main>
+  <Footer />
+</Layout>
+
+<style>
+  .docs-page {
+    padding-top: 40px;
+    padding-bottom: 60px;
+    max-width: 720px;
+  }
+
+  .back-link {
+    font-size: 0.8rem;
+    color: var(--yellow);
+    opacity: 0.6;
+    display: inline-block;
+    margin-bottom: 24px;
+    transition: opacity var(--transition);
+  }
+
+  .back-link:hover {
+    opacity: 1;
+  }
+
+  .docs-header {
+    margin-bottom: 48px;
+  }
+
+  .section-label {
+    font-family: var(--font-display);
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    color: var(--yellow);
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .docs-title {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: clamp(2rem, 5vw, 3rem);
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+
+  .doc-article {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .doc-section {
+    padding-bottom: 40px;
+    margin-bottom: 40px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .doc-section:last-child {
+    border-bottom: none;
+  }
+
+  .doc-heading {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 1.4rem;
+    letter-spacing: -0.02em;
+    margin-bottom: 16px;
+  }
+
+  .doc-section p {
+    font-size: 0.9rem;
+    opacity: 0.65;
+    line-height: 1.7;
+    margin-bottom: 12px;
+  }
+
+  .doc-section strong {
+    color: var(--white);
+  }
+
+  .doc-section code {
+    font-size: 0.82rem;
+    background: rgba(235, 255, 0, 0.08);
+    color: var(--yellow);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  .doc-code {
+    background: rgba(245, 245, 245, 0.03);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    line-height: 1.7;
+    overflow-x: auto;
+    color: var(--yellow);
+    margin: 12px 0;
+  }
+
+  .doc-code code {
+    background: none;
+    padding: 0;
+    color: var(--yellow);
+  }
+
+  /* Flow diagram */
+  .flow-diagram {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 24px;
+  }
+
+  .flow-step {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    gap: 20px;
+    padding: 24px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .flow-step:first-child {
+    border-top: 1px solid var(--border);
+  }
+
+  .flow-num {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 1.2rem;
+    color: var(--yellow);
+    opacity: 0.5;
+    padding-top: 2px;
+  }
+
+  .flow-content h3 {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 1rem;
+    margin-bottom: 8px;
+  }
+</style>

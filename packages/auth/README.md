@@ -1,6 +1,6 @@
 # @avs-auth/auth
 
-Framework-agnostic AVS AUTH client for browser apps, aligned to the public Shoo browser package surface.
+Framework-agnostic AVS AUTH client for browser apps.
 
 ## Install
 

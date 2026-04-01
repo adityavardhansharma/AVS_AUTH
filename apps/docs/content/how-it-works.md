@@ -4,7 +4,7 @@ AVS AUTH implements a standard OIDC Authorization Code + PKCE flow with a centra
 
 ## Step-by-step flow
 
-### 1. Authorization request
+### 1. Authorization request 
 
 Your app generates a PKCE bundle (verifier + S256 challenge) and redirects the user to the broker's `/authorize` endpoint with the `redirect_uri`, `state`, and `code_challenge`.
 

@@ -1,0 +1,145 @@
+---
+// Features grid section
+const features = [
+  {
+    icon: '01',
+    title: 'Zero Dashboard',
+    description: 'No app registration. Your domain IS your client ID. Just add the script tag and go.',
+  },
+  {
+    icon: '02',
+    title: 'Pairwise Privacy',
+    description: 'Every app gets a unique user ID. Apps cannot track or correlate users across origins.',
+  },
+  {
+    icon: '03',
+    title: 'OIDC Under the Hood',
+    description: 'Full OpenID Connect with PKCE S256. Standards-compliant. No proprietary lock-in.',
+  },
+  {
+    icon: '04',
+    title: 'Framework Agnostic',
+    description: 'Works with vanilla JS, React, or any framework. Hosted script or npm package — your call.',
+  },
+  {
+    icon: '05',
+    title: 'Session Monitoring',
+    description: 'Built-in session polling with auto-detection of revoked or expired sessions.',
+  },
+  {
+    icon: '06',
+    title: 'User Consent',
+    description: 'Users explicitly approve each app. PII sharing is opt-in and revocable per site.',
+  },
+];
+---
+
+<section class="features" id="features">
+  <div class="features-inner container">
+    <div class="features-header">
+      <span class="section-label">CAPABILITIES</span>
+      <h2 class="section-title">What you get</h2>
+    </div>
+
+    <div class="features-grid">
+      {features.map((feature, i) => (
+        <div class="feature-card" style={`animation-delay: ${i * 0.08}s`}>
+          <span class="feature-icon">{feature.icon}</span>
+          <h3 class="feature-title">{feature.title}</h3>
+          <p class="feature-desc">{feature.description}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .features {
+    padding: 80px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .features-header {
+    margin-bottom: 48px;
+  }
+
+  .section-label {
+    font-family: var(--font-display);
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    color: var(--yellow);
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+
+  .feature-card {
+    padding: 28px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: rgba(245, 245, 245, 0.02);
+    transition: all var(--transition);
+    animation: fadeInUp 0.5s ease-out both;
+  }
+
+  .feature-card:hover {
+    border-color: rgba(235, 255, 0, 0.25);
+    background: rgba(235, 255, 0, 0.03);
+    transform: translateY(-2px);
+  }
+
+  .feature-icon {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 0.7rem;
+    color: var(--black);
+    background: var(--yellow);
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    margin-bottom: 16px;
+  }
+
+  .feature-title {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 1rem;
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
+  }
+
+  .feature-desc {
+    font-size: 0.85rem;
+    opacity: 0.55;
+    line-height: 1.6;
+  }
+
+  @media (max-width: 900px) {
+    .features-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 600px) {
+    .features-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -12,7 +12,8 @@ import {
   defaults,
   createAvsAuth,
   startSessionMonitor,
-  checkSession
+  checkSession,
+  exchangeCode
 } from "../src/index";
 
 // Mock localStorage
@@ -275,8 +276,8 @@ describe("@avs-auth/auth", () => {
   });
 });
 
-// --- checkSession (Shoo parity) ---
-describe("checkSession - Shoo parity", () => {
+// --- checkSession ---
+describe("checkSession", () => {
   it("returns login_required when no token is stored", async () => {
     const result = await checkSession();
     expect(result).toEqual({ status: "login_required", reason: "invalid_token" });
@@ -389,10 +390,80 @@ describe("checkSession - Shoo parity", () => {
       "Session check failed (403)"
     );
   });
+
+  it("returns rate_limited with retryAfter on 429", async () => {
+    persistIdentity("user-1", "test-token");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      status: 429,
+      headers: new Headers({ "retry-after": "30" })
+    }));
+    const result = await checkSession({ avsBaseUrl: "https://auth.adityavs.tech" });
+    expect(result).toEqual({ status: "rate_limited", retryAfter: 30 });
+  });
+
+  it("returns rate_limited with default retryAfter when header is missing", async () => {
+    persistIdentity("user-1", "test-token");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      status: 429,
+      headers: new Headers()
+    }));
+    const result = await checkSession({ avsBaseUrl: "https://auth.adityavs.tech" });
+    expect(result).toEqual({ status: "rate_limited", retryAfter: 60 });
+  });
 });
 
-// --- startSessionMonitor (Shoo parity) ---
-describe("startSessionMonitor - Shoo parity", () => {
+// --- exchangeCode ---
+describe("exchangeCode", () => {
+  it("throws with response body details on failure", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: () => Promise.resolve("invalid_grant: code expired")
+    }));
+    await expect(
+      exchangeCode({
+        avsBaseUrl: "https://auth.adityavs.tech",
+        clientId: "origin:https://app.example.com",
+        redirectUri: "https://app.example.com/callback",
+        code: "bad-code",
+        codeVerifier: "verifier"
+      })
+    ).rejects.toThrow("Token exchange failed (400): invalid_grant: code expired");
+  });
+
+  it("throws with 'no details' when response body is empty", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: () => Promise.resolve("")
+    }));
+    await expect(
+      exchangeCode({
+        avsBaseUrl: "https://auth.adityavs.tech",
+        clientId: "origin:https://app.example.com",
+        redirectUri: "https://app.example.com/callback",
+        code: "bad-code",
+        codeVerifier: "verifier"
+      })
+    ).rejects.toThrow("Token exchange failed (500): no details");
+  });
+
+  it("throws if clientSecret is passed (assertNoClientSecretOption)", async () => {
+    await expect(
+      exchangeCode({
+        avsBaseUrl: "https://auth.adityavs.tech",
+        clientId: "origin:https://app.example.com",
+        redirectUri: "https://app.example.com/callback",
+        code: "code",
+        codeVerifier: "verifier",
+        clientSecret: "secret"
+      } as any)
+    ).rejects.toThrow("exchangeCode no longer accepts clientSecret in browser code");
+  });
+});
+
+// --- startSessionMonitor ---
+describe("startSessionMonitor", () => {
   it("calls onLoginRequired when session check returns login_required", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("window", {
@@ -443,7 +514,7 @@ describe("startSessionMonitor - Shoo parity", () => {
     vi.restoreAllMocks();
   });
 
-  it("auto-stops after first login_required (Shoo parity)", async () => {
+  it("auto-stops after first login_required", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("window", {
       location: { href: "http://localhost", origin: "http://localhost", pathname: "/" },

@@ -1,0 +1,462 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+
+const sections = [
+  {
+    title: 'Getting Started',
+    links: [
+      { label: 'Introduction', href: '#introduction' },
+      { label: 'Vanilla JS Setup', href: '#vanilla' },
+      { label: 'React Setup', href: '#react' },
+    ],
+  },
+  {
+    title: 'Guides',
+    links: [
+      { label: 'How It Works', href: '#how-it-works' },
+      { label: 'Server Verification', href: '#server-verification' },
+      { label: 'Convex Integration', href: '#convex' },
+    ],
+  },
+  {
+    title: 'Reference',
+    links: [
+      { label: 'API Reference', href: '#api-reference' },
+      { label: 'Endpoints', href: '/#endpoints' },
+    ],
+  },
+];
+---
+
+<Layout title="Docs — AVS AUTH">
+  <Header />
+  <main class="docs-page container">
+    <div class="docs-header">
+      <span class="section-label">DOCUMENTATION</span>
+      <h1 class="docs-title">AVS AUTH Docs</h1>
+      <p class="docs-subtitle">
+        Everything you need to integrate privacy-first authentication into your app.
+      </p>
+    </div>
+
+    <div class="docs-grid">
+      <nav class="docs-sidebar">
+        {sections.map((section) => (
+          <div class="sidebar-section">
+            <h3 class="sidebar-heading">{section.title}</h3>
+            <ul class="sidebar-list">
+              {section.links.map((link) => (
+                <li>
+                  <a href={link.href} class="sidebar-link">{link.label}</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </nav>
+
+      <div class="docs-content">
+        <!-- Introduction -->
+        <section class="doc-section" id="introduction">
+          <h2 class="doc-heading">Introduction</h2>
+          <p>
+            AVS AUTH is a privacy-first authentication broker running at
+            <code>auth.adityavs.tech</code>. It provides instant auth for any web app
+            with zero dashboard setup. Your domain is your client ID.
+          </p>
+          <p>
+            Every user gets a <strong>pairwise subject ID</strong> unique to your app's origin.
+            Apps cannot correlate users across different origins. The protocol is standard
+            OpenID Connect with PKCE S256.
+          </p>
+        </section>
+
+        <!-- Vanilla JS -->
+        <section class="doc-section" id="vanilla">
+          <h2 class="doc-heading">Vanilla JS Setup</h2>
+          <h3 class="doc-subheading">Option 1: Hosted Script (easiest)</h3>
+          <pre class="doc-code"><code>&lt;script src="https://auth.adityavs.tech/avs-auth.js"&gt;&lt;/script&gt;</code></pre>
+
+          <h3 class="doc-subheading">Option 2: NPM Package</h3>
+          <pre class="doc-code"><code>npm install @avs-auth/auth</code></pre>
+          <pre class="doc-code"><code>import {"{"} createAvsAuth {"}"} from "@avs-auth/auth"
+
+const auth = createAvsAuth({"{"}<br/>  avsBaseUrl: "https://auth.adityavs.tech",<br/>  callbackPath: "/auth/callback"<br/>{"}"})
+
+// Start sign-in flow
+await auth.startSignIn()
+
+// Handle callback (on your callback page)
+await auth.handleCallback()
+
+// Get identity
+const identity = auth.getIdentity()
+console.log(identity.userId)  // pairwise subject ID</code></pre>
+        </section>
+
+        <!-- React -->
+        <section class="doc-section" id="react">
+          <h2 class="doc-heading">React Setup</h2>
+          <pre class="doc-code"><code>npm install @avs-auth/react</code></pre>
+          <pre class="doc-code"><code>import {"{"} useAvsAuth {"}"} from "@avs-auth/react"
+
+function App() {"{"}<br/>  const auth = useAvsAuth({"{"}<br/>    avsBaseUrl: "https://auth.adityavs.tech",<br/>    callbackPath: "/auth/callback"<br/>  {"}"})<br/><br/>  return (<br/>    &lt;div&gt;<br/>      &lt;button onClick={"{"}() =&gt; void auth.signIn(){"}"}&gt;Sign In&lt;/button&gt;<br/>      &lt;p&gt;{"{"}auth.identity.userId ?? "Signed out"{"}"}&lt;/p&gt;<br/>      &lt;p&gt;Session: {"{"}auth.sessionState{"}"}&lt;/p&gt;<br/>    &lt;/div&gt;<br/>  )<br/>{"}"}</code></pre>
+        </section>
+
+        <!-- How It Works -->
+        <section class="doc-section" id="how-it-works">
+          <h2 class="doc-heading">How It Works</h2>
+          <ol class="doc-list">
+            <li>Your app redirects to <code>/authorize</code> with a PKCE challenge</li>
+            <li>User signs in via Google at the broker (if no session exists)</li>
+            <li>User approves your app (consent, first time only)</li>
+            <li>Broker redirects back with an authorization code</li>
+            <li>Your app exchanges the code at <code>/token</code> for an <code>id_token</code></li>
+            <li>The token's <code>sub</code> claim is a pairwise ID unique to your origin</li>
+          </ol>
+          <p>
+            Sessions last 14 days. The SDK handles PKCE, session monitoring, and token
+            storage automatically.
+          </p>
+        </section>
+
+        <!-- Server Verification -->
+        <section class="doc-section" id="server-verification">
+          <h2 class="doc-heading">Server Verification</h2>
+          <p>
+            To verify tokens server-side, fetch the public keys from the JWKS endpoint
+            and validate the <code>id_token</code> signature:
+          </p>
+          <pre class="doc-code"><code>// Fetch JWKS
+GET https://auth.adityavs.tech/.well-known/jwks.json
+
+// Verify id_token
+// - Algorithm: ES256
+// - Issuer: https://auth.adityavs.tech
+// - Audience: origin:https://yourapp.com</code></pre>
+        </section>
+
+        <!-- Convex -->
+        <section class="doc-section" id="convex">
+          <h2 class="doc-heading">Convex Integration</h2>
+          <p>
+            AVS AUTH works seamlessly with Convex. Use the React hook to get the
+            identity, then pass the <code>id_token</code> to your Convex functions
+            for server-side verification.
+          </p>
+        </section>
+
+        <!-- API Reference -->
+        <section class="doc-section" id="api-reference">
+          <h2 class="doc-heading">API Reference</h2>
+
+          <h3 class="doc-subheading">createAvsAuth(options)</h3>
+          <p>Creates a new auth client instance.</p>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr>
+                  <th>Option</th>
+                  <th>Type</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>avsBaseUrl</code></td>
+                  <td><code>string</code></td>
+                  <td>Broker URL (https://auth.adityavs.tech)</td>
+                </tr>
+                <tr>
+                  <td><code>callbackPath</code></td>
+                  <td><code>string</code></td>
+                  <td>Path on your app for the OAuth callback</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 class="doc-subheading">Auth Methods</h3>
+          <div class="doc-table-wrap">
+            <table class="doc-table">
+              <thead>
+                <tr>
+                  <th>Method</th>
+                  <th>Returns</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>startSignIn()</code></td>
+                  <td><code>Promise&lt;void&gt;</code></td>
+                  <td>Initiates PKCE sign-in redirect</td>
+                </tr>
+                <tr>
+                  <td><code>handleCallback()</code></td>
+                  <td><code>Promise&lt;void&gt;</code></td>
+                  <td>Exchanges code for token on callback page</td>
+                </tr>
+                <tr>
+                  <td><code>getIdentity()</code></td>
+                  <td><code>Identity | null</code></td>
+                  <td>Returns current identity or null</td>
+                </tr>
+                <tr>
+                  <td><code>checkSession()</code></td>
+                  <td><code>Promise&lt;SessionStatus&gt;</code></td>
+                  <td>Checks session status with broker</td>
+                </tr>
+                <tr>
+                  <td><code>logout()</code></td>
+                  <td><code>Promise&lt;void&gt;</code></td>
+                  <td>Revokes session and clears local state</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+  <Footer />
+</Layout>
+
+<style>
+  .docs-page {
+    padding-top: 40px;
+    padding-bottom: 60px;
+  }
+
+  .docs-header {
+    margin-bottom: 48px;
+  }
+
+  .section-label {
+    font-family: var(--font-display);
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    color: var(--yellow);
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .docs-title {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    letter-spacing: -0.03em;
+    line-height: 1;
+    margin-bottom: 12px;
+  }
+
+  .docs-subtitle {
+    font-size: 1rem;
+    opacity: 0.5;
+    max-width: 500px;
+  }
+
+  .docs-grid {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 60px;
+    align-items: start;
+  }
+
+  /* Sidebar */
+  .docs-sidebar {
+    position: sticky;
+    top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .sidebar-heading {
+    font-family: var(--font-display);
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--yellow);
+    opacity: 0.6;
+    margin-bottom: 8px;
+  }
+
+  .sidebar-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .sidebar-link {
+    font-size: 0.85rem;
+    color: var(--white);
+    opacity: 0.5;
+    text-decoration: none;
+    padding: 4px 0;
+    display: block;
+    transition: all var(--transition);
+  }
+
+  .sidebar-link:hover {
+    opacity: 1;
+    color: var(--yellow);
+    padding-left: 8px;
+  }
+
+  /* Content */
+  .docs-content {
+    min-width: 0;
+  }
+
+  .doc-section {
+    padding-bottom: 40px;
+    margin-bottom: 40px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .doc-section:last-child {
+    border-bottom: none;
+  }
+
+  .doc-heading {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 1.5rem;
+    letter-spacing: -0.02em;
+    margin-bottom: 16px;
+  }
+
+  .doc-subheading {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 1rem;
+    margin: 24px 0 12px;
+    color: var(--yellow);
+    opacity: 0.8;
+  }
+
+  .doc-section p {
+    font-size: 0.9rem;
+    opacity: 0.65;
+    line-height: 1.7;
+    margin-bottom: 12px;
+    max-width: 640px;
+  }
+
+  .doc-section code {
+    font-size: 0.82rem;
+    background: rgba(235, 255, 0, 0.08);
+    color: var(--yellow);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  .doc-section strong {
+    color: var(--white);
+    font-weight: 700;
+  }
+
+  .doc-code {
+    background: rgba(245, 245, 245, 0.03);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 1.7;
+    overflow-x: auto;
+    color: var(--yellow);
+    margin: 12px 0;
+  }
+
+  .doc-code code {
+    background: none;
+    padding: 0;
+    color: var(--yellow);
+  }
+
+  .doc-list {
+    padding-left: 20px;
+    margin: 12px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .doc-list li {
+    font-size: 0.9rem;
+    opacity: 0.6;
+    line-height: 1.6;
+  }
+
+  .doc-list li code {
+    opacity: 1;
+  }
+
+  .doc-table-wrap {
+    overflow-x: auto;
+    margin: 12px 0;
+  }
+
+  .doc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .doc-table th {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-align: left;
+    padding: 10px 16px;
+    background: rgba(235, 255, 0, 0.04);
+    color: var(--yellow);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .doc-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    opacity: 0.7;
+  }
+
+  .doc-table td code {
+    font-size: 0.78rem;
+  }
+
+  .doc-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .doc-table tr:hover td {
+    background: rgba(235, 255, 0, 0.02);
+  }
+
+  @media (max-width: 768px) {
+    .docs-grid {
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+
+    .docs-sidebar {
+      position: static;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+  }
+</style>

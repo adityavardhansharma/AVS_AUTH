@@ -1,5 +1,20 @@
-import { mutationGeneric } from "convex/server";
+import { mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
+
+export const getPairwiseByUserAndClient = queryGeneric({
+  args: {
+    userId: v.string(),
+    clientId: v.string()
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("pairwise_subjects")
+      .withIndex("by_user_id_client_id", (q: any) =>
+        q.eq("userId", args.userId).eq("clientId", args.clientId)
+      )
+      .first();
+  }
+});
 
 export const getOrCreatePairwiseSubject = mutationGeneric({
   args: {

@@ -1,6 +1,6 @@
 # AVS AUTH Implementation Plan
 
-This plan is locked to full Shoo parity as a floor, not an aspirational target.
+This plan defines the shipped AVS AUTH baseline.
 
 ## Target Architecture
 
@@ -19,7 +19,7 @@ This plan is locked to full Shoo parity as a floor, not an aspirational target.
 - `packages/auth`
   - Browser SDK with PKCE S256 sign-in, callback handling, identity persistence, session monitoring (auto-stop on `login_required`), strict `checkSession` response parsing, aud pre-validation, and hosted-script runtime.
 - `packages/react`
-  - React hook (`useAvsAuth`) with token-based session state transitions matching Shoo semantics, and Convex integration helper (`createAvsConvexAuth`).
+  - React hook (`useAvsAuth`) with token-based session state transitions for AVS AUTH, and Convex integration helper (`createAvsConvexAuth`).
 
 ## Phase Gate Sequence
 

@@ -1,6 +1,6 @@
 # AVS AUTH
 
-AVS AUTH is a Shoo-style authentication broker for `auth.adityavs.tech`.
+AVS AUTH is a privacy-first authentication broker for `auth.adityavs.tech`.
 
 This repository contains:
 
@@ -13,16 +13,16 @@ This repository contains:
 - `apps/docs` — static documentation site
 - `apps/broker-web` — reserved scaffold (the Worker currently serves the broker UI as inline HTML)
 
-The product requirement is locked to full Shoo parity as a minimum bar. AVS AUTH may add security and operator features, but it may not ship with fewer public features than Shoo.
+The product requirement is locked to a complete broker, hosted-script, SDK, and React integration baseline.
 
 ## Current State
 
-All Phase 1 (Shoo parity) functionality is implemented:
+All Phase 1 functionality is implemented:
 
 - Full OIDC protocol: `/authorize`, `/token`, `/session/check`, `/logout`, OIDC discovery, JWKS
 - Browser SDK with PKCE S256, session monitoring (auto-stop on `login_required`), strict `checkSession` parsing, aud pre-validation
-- React hook with token-based session state transitions matching Shoo semantics
-- Hosted script (`/avs-auth.js`) with matching SDK behavior
+- React hook with token-based session state transitions for broker-backed auth
+- Hosted script (`/avs-auth.js`) with AVS-native globals and events
 - Broker UX: landing, sign-in, consent, profile, authorized-sites, legal, error, no-session pages
 - Pairwise subject derivation, domain-derived `client_id`, optional PII consent gating
 - Admin routes: key rotation, client block/unblock, session revocation, audit listing
@@ -31,7 +31,7 @@ Phase 2 (hardening) is in progress: rate-limit depth, key rollover rigor, operat
 
 ## Release Gate
 
-- [Shoo parity checklist](docs/parity-checklist.md)
+- [Parity checklist](docs/parity-checklist.md)
 - [Implementation plan](docs/implementation-plan.md)
 - [Test matrix](docs/test-matrix.md)
 

@@ -1,0 +1,48 @@
+---
+// Scrolling WIP banner
+---
+
+<div class="marquee-banner">
+  <div class="marquee-track">
+    {Array.from({ length: 8 }).map(() => (
+      <span class="marquee-item">
+        <span class="marquee-dot">&bull;</span>
+        PRIVACY-FIRST AUTH — ZERO DASHBOARDS — 2 LINES OF CODE
+        <span class="marquee-dot">&bull;</span>
+      </span>
+    ))}
+  </div>
+</div>
+
+<style>
+  .marquee-banner {
+    background: var(--yellow);
+    border-bottom: 1px solid var(--black);
+    overflow: hidden;
+    white-space: nowrap;
+    padding: 6px 0;
+    position: relative;
+  }
+
+  .marquee-track {
+    display: inline-flex;
+    animation: marquee-scroll 30s linear infinite;
+    will-change: transform;
+  }
+
+  .marquee-item {
+    font-family: var(--font-display);
+    font-size: 0.65rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: var(--black);
+    letter-spacing: 0.05em;
+    padding: 0 8px;
+    flex-shrink: 0;
+  }
+
+  .marquee-dot {
+    margin: 0 1.2em;
+    opacity: 0.5;
+  }
+</style>

@@ -1,4 +1,4 @@
-# AVS AUTH Shoo Parity Checklist
+# AVS AUTH Parity Checklist
 
 This checklist is the Phase 1 release gate. AVS AUTH is not ready for beta until every line is implemented, tested, and manually accepted.
 
@@ -63,7 +63,7 @@ This checklist is the Phase 1 release gate. AVS AUTH is not ready for beta until
 | Session monitor and session check helpers | auto-stop on `login_required`, strict 200/401 parsing, aud pre-validation, throw on unexpected status | `packages/auth` | auto-stop test, aud mismatch test, malformed 401 test, unexpected status throw test | app receives login required | done |
 | JWT decode helper | `decodeIdentityClaims` | `packages/auth` | decode test | claims visible in client app | done |
 | `@avs-auth/types` | shared protocol and SDK types | `packages/types` | export contract test (no `--passWithNoTests`) | package docs reference types correctly | done |
-| `@avs-auth/auth` | browser SDK package | `packages/auth` | API surface test, checkSession Shoo parity tests | vanilla example works | done |
+| `@avs-auth/auth` | browser SDK package | `packages/auth` | API surface test, checkSession behavior tests | vanilla example works | done |
 | `@avs-auth/react` | React wrapper package | `packages/react` | hook behavior test, token-based session state, monitor-driven transitions | React example works | done |
 
 ## Docs and DX Parity
@@ -84,9 +84,14 @@ This checklist is the Phase 1 release gate. AVS AUTH is not ready for beta until
 
 | Capability | AVS AUTH Equivalent | Owner | Automated Coverage | Status |
 | --- | --- | --- | --- | --- |
-| Rate limiting | `/authorize` and `/token` per-origin limits using `origin_metrics` | `services/convex` + `services/edge-gateway` | 429 on limit exceeded (Convex mode) | in_progress |
-| Key rotation workflow | `/admin/rotate-keys` + multi-key JWKS serving | `services/edge-gateway` + `services/convex` | admin route tests, rotation test | in_progress |
-| Operator tooling | `/admin/*` protected routes for block/revoke/audit | `services/edge-gateway` + `services/convex` | auth-required tests, block/unblock/revoke/audit tests | in_progress |
-| Convex function tests | full test suite for all function modules | `services/convex` | all function tests | planned |
+| Rate limiting | `/authorize`, `/token`, and `/session/check` per-origin limits using `origin_metrics` | `services/convex` + `services/edge-gateway` | 429 on limit exceeded (Convex mode) | done |
+| Key rotation workflow | `/admin/rotate-keys` + multi-key JWKS serving + proper JWK export | `services/edge-gateway` + `services/convex` | admin route tests, rotation test | done |
+| Operator tooling | `/admin/*` protected routes for block/revoke/audit | `services/edge-gateway` + `services/convex` | auth-required tests, block/unblock/revoke/audit tests | done |
+| Blocked client enforcement | `clients:upsertClient` called on `/authorize` and `/token`; blocked check rejects with `access_denied` | `services/edge-gateway` + `services/convex` | admin block test, upsertClient on flow entry | done |
+| Audit event wiring | `recordAuditEvent` called from gateway for token issuance, consent grant/deny/revoke, logout, admin actions, blocked client attempts | `services/edge-gateway` + `services/convex` | audit events recorded on key operations | done |
+| Session check hardening | JWT signature verification against JWKS, `iss` claim validation, sub-to-session user binding via pairwise lookup | `services/edge-gateway` + `packages/oidc-core` | invalid signature test, wrong issuer test, no-token test, full flow verification test | done |
+| Token signing (Convex mode) | Fetch active signing key from Convex `signingKeys:getActiveSigningKey` instead of in-memory key; JWKS and signing use same keys | `services/edge-gateway` + `services/convex` | typecheck passes; key export/import round-trip test | done |
+| Pairwise (Convex mode) | Pre-compute HMAC-derived `pairwiseSub` via `derivePairwiseSub()` and pass to Convex; consistent across modes | `services/edge-gateway` + `packages/oidc-core` | pairwise derivation tests | done |
+| Convex function tests | full test suite for all function modules | `services/convex` | all function tests | done |
 | Token exchange E2E tests | `/token` success, replay, PKCE mismatch, redirect mismatch | `services/edge-gateway` | protocol tests | done |
 | Remove `passWithNoTests` | all packages enforce test presence | all packages | test runner | done |

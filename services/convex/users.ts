@@ -84,3 +84,57 @@ export const upsertUserFromGoogleProfile = mutationGeneric({
     };
   }
 });
+
+export const deleteUserAccount = mutationGeneric({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .filter((q: any) => q.eq(q.field("_id"), args.userId))
+      .first();
+
+    if (!user) {
+      return { deleted: false };
+    }
+
+    const sessions = await ctx.db
+      .query("broker_sessions")
+      .withIndex("by_user_id", (q: any) => q.eq("userId", args.userId))
+      .collect();
+    for (const session of sessions) {
+      await ctx.db.delete(session._id);
+    }
+
+    const consents = await ctx.db
+      .query("consents")
+      .withIndex("by_user_id", (q: any) => q.eq("userId", args.userId))
+      .collect();
+    for (const consent of consents) {
+      await ctx.db.delete(consent._id);
+    }
+
+    const pairwiseSubjects = await ctx.db.query("pairwise_subjects").collect();
+    for (const pairwise of pairwiseSubjects) {
+      if (pairwise.userId === args.userId) {
+        await ctx.db.delete(pairwise._id);
+      }
+    }
+
+    const transactions = await ctx.db.query("auth_transactions").collect();
+    for (const transaction of transactions) {
+      if (transaction.userId === args.userId) {
+        await ctx.db.delete(transaction._id);
+      }
+    }
+
+    const codes = await ctx.db.query("authorization_codes").collect();
+    for (const code of codes) {
+      if (code.userId === args.userId) {
+        await ctx.db.delete(code._id);
+      }
+    }
+
+    await ctx.db.delete(user._id);
+    return { deleted: true };
+  }
+});

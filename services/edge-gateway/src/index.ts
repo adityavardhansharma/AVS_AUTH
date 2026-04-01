@@ -4,7 +4,9 @@ import {
   buildSessionCheckResponse,
   createOpenIdConfiguration,
   derivePairwiseSub,
+  exportPrivateKeyToJwk,
   generateSigningKeySet,
+  importPrivateKeyFromJwk,
   isCodeRedeemable,
   issueIdToken,
   OidcError,
@@ -12,15 +14,16 @@ import {
   shouldIncludePiiClaims,
   validateAuthorizeRequest,
   validateTokenRequest,
+  verifyIdToken,
   verifyPkce
 } from "@avs-auth/oidc-core";
 import { callConvexMutation, callConvexQuery, hasConvexConfig } from "./convex";
+import { AVS_AUTH_SCRIPT_SOURCE } from "./avs-auth-script";
 import type {
   AuthorizedSite,
   BrokerSessionSummary,
   BrokerUserProfile,
   Jwk,
-  LogoutResponse,
   TokenRequest,
   TokenResponse
 } from "@avs-auth/types";
@@ -90,6 +93,10 @@ function correlationId(): string {
   return `req_${crypto.randomUUID()}`;
 }
 
+function brokerClientId(env: Env): string {
+  return `origin:${new URL(env.ISSUER).origin}`;
+}
+
 function json(data: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(data, null, 2), {
     ...init,
@@ -112,41 +119,137 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Convex-mode signing key (fetches from Convex instead of in-memory)
+// ---------------------------------------------------------------------------
+async function getConvexSigningKey(env: Env): Promise<{ privateKey: CryptoKey; kid: string }> {
+  const activeKey = await cvxQ<{ kid: string; encryptedPrivateJwk: string } | null>(
+    env, "signingKeys:getActiveSigningKey", {}
+  );
+  if (!activeKey) {
+    throw new OidcError("server_error", "No active signing key in Convex", 500);
+  }
+  const privateKey = await importPrivateKeyFromJwk(activeKey.encryptedPrivateJwk);
+  return { privateKey, kid: activeKey.kid };
+}
+
+// ---------------------------------------------------------------------------
+// Client registration + blocked check (Convex mode only)
+// ---------------------------------------------------------------------------
+async function registerAndCheckClient(clientId: string, env: Env, reqId: string): Promise<void> {
+  if (!convex(env)) return;
+  const now = Date.now();
+  const origin = clientId.replace(/^origin:/, "");
+  const client = await cvxM<{ status: string }>(env, "clients:upsertClient", {
+    clientId,
+    origin,
+    firstSeenAt: now,
+    lastSeenAt: now,
+    status: "active"
+  });
+  if (client && client.status === "blocked") {
+    void audit(env, {
+      actorType: "system",
+      action: "client_blocked_attempt",
+      targetType: "client",
+      targetId: clientId,
+      clientId,
+      correlationId: reqId
+    });
+    throw new OidcError("access_denied", "This client has been blocked by the operator");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Audit event helper (Convex mode only, fire-and-forget safe)
+// ---------------------------------------------------------------------------
+async function audit(env: Env, params: {
+  actorType: "user" | "operator" | "system";
+  actorId?: string;
+  action: string;
+  targetType: string;
+  targetId?: string;
+  clientId?: string;
+  correlationId: string;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  if (!convex(env)) return;
+  try {
+    await cvxM(env, "auditEvents:recordAuditEvent", {
+      eventId: `evt_${crypto.randomUUID()}`,
+      ...params,
+      createdAt: Date.now()
+    });
+  } catch {
+    // Audit failures should not break the request
+  }
+}
+
 const CSS = `
+:root{--bg:#090909;--panel:#101010;--panel-soft:rgba(255,255,255,.03);--border:rgba(255,255,255,.1);--text:#f2f2ed;--muted:#a4a4a0;--accent:#ecff00;--danger:#ff7272}
 *{box-sizing:border-box}
-body{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f6f0e5;color:#1a1714;margin:0;line-height:1.6}
-main{max-width:720px;margin:0 auto;padding:48px 24px}
-.card{padding:32px;border:1px solid rgba(23,20,17,0.12);border-radius:20px;background:#fffdf8;box-shadow:0 1px 3px rgba(0,0,0,0.04)}
-h1{font-size:1.6rem;margin:0 0 12px;font-weight:700}
-h2{font-size:1.2rem;margin:24px 0 8px;font-weight:600}
-p{margin:8px 0}
-a{color:#0e6b59}
-.btn{display:inline-flex;align-items:center;padding:10px 20px;border-radius:999px;background:#0e6b59;color:#fff;text-decoration:none;border:0;cursor:pointer;font-size:0.95rem;font-weight:500;transition:background 0.15s;margin:4px 8px 4px 0}
-.btn:hover{background:#0a5447}
-.btn.secondary{background:transparent;color:#0e6b59;border:1.5px solid #0e6b59}
-.btn.secondary:hover{background:#0e6b5910}
-.btn.danger{background:#b91c1c;color:#fff;border:0}
-.btn.danger:hover{background:#991b1b}
-code{background:rgba(23,20,17,0.06);padding:2px 8px;border-radius:6px;font-size:0.9em}
-.profile-header{display:flex;align-items:center;gap:16px;margin-bottom:16px}
-.profile-header img{width:56px;height:56px;border-radius:50%;border:2px solid rgba(23,20,17,0.1)}
-.site-list{list-style:none;padding:0;margin:16px 0}
-.site-list li{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border:1px solid rgba(23,20,17,0.08);border-radius:12px;margin-bottom:8px;background:#fff}
-.site-info{display:flex;flex-direction:column;gap:2px}
-.site-origin{font-weight:600}
-.site-meta{font-size:0.85em;color:#666}
-.consent-box{text-align:center;padding:24px 0}
-.consent-origin{font-size:1.1rem;font-weight:600;margin:12px 0}
-.consent-detail{color:#555;margin:8px 0 24px}
-.actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-footer{margin-top:32px;padding-top:16px;border-top:1px solid rgba(23,20,17,0.08);font-size:0.85em;color:#666;text-align:center}
-footer a{color:#0e6b59;margin:0 8px}
-.nav{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap}
-.alert{padding:12px 16px;border-radius:12px;margin-bottom:16px}
-.alert.info{background:#dbeafe;color:#1e40af;border:1px solid #93c5fd}
-.alert.warning{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
-.empty{text-align:center;padding:32px 16px;color:#888}
-.mono{font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace}
+html{background:#090909}
+body{margin:0;color:var(--text);line-height:1.6;font-family:"IBM Plex Mono","SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;background-color:var(--bg);background-image:linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px),linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);background-size:72px 72px}
+main{max-width:1360px;margin:0 auto;padding:42px 28px 84px}
+.card{padding:32px;border:1px solid var(--border);background:rgba(12,12,12,.92);box-shadow:0 0 0 1px rgba(255,255,255,.015) inset}
+h1,h2,h3,p{margin:0}
+h1{font-family:"Arial Black","Helvetica Neue",sans-serif;font-size:1.65rem;line-height:.95;letter-spacing:-.04em}
+h2{font-family:"Arial Black","Helvetica Neue",sans-serif;font-size:1.3rem;letter-spacing:-.03em}
+h3{font-family:"Arial Black","Helvetica Neue",sans-serif;font-size:1rem;letter-spacing:-.02em}
+p{margin-top:10px;color:var(--muted)}
+a{color:var(--text)}
+code{background:rgba(255,255,255,.05);padding:2px 7px;border-radius:4px;font-size:.92em}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:52px;padding:0 26px;border:1px solid var(--border);background:transparent;color:var(--text);text-decoration:none;cursor:pointer;font:inherit;font-size:.95rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;transition:border-color .15s ease,color .15s ease,background .15s ease;margin:4px 10px 4px 0}
+.btn:hover{border-color:rgba(255,255,255,.24)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#080808}
+.btn.secondary{background:transparent;color:var(--text)}
+.btn.danger{background:transparent;color:var(--danger);border-color:rgba(255,114,114,.4)}
+.btn.danger:hover{border-color:rgba(255,114,114,.7)}
+.hero-shell{padding-top:8px}
+.brand-mark{display:inline-flex;align-items:center;font-family:"Arial Black","Helvetica Neue",sans-serif;font-size:1.6rem;font-weight:900;letter-spacing:-.04em;color:var(--text);text-decoration:none;margin-bottom:46px}
+.hero-kicker{display:inline-block;color:var(--muted);text-transform:uppercase;letter-spacing:.16em;font-size:.78rem;margin-bottom:16px}
+.hero-title{font-family:"Arial Black","Helvetica Neue",sans-serif;font-size:clamp(3.8rem,8vw,6.8rem);line-height:.86;letter-spacing:-.07em;max-width:760px}
+.hero-title .accent{color:var(--accent)}
+.hero-copy{max-width:660px;font-size:1.05rem;color:var(--muted);margin-top:28px}
+.nav{display:flex;gap:12px;margin-top:26px;margin-bottom:0;flex-wrap:wrap}
+.grid{display:grid;gap:20px}
+.dashboard-grid{grid-template-columns:minmax(0,1.35fr) minmax(320px,.9fr);align-items:start}
+.panel{border:1px solid var(--border);background:rgba(15,15,15,.88);padding:24px}
+.profile-panel{display:grid;grid-template-columns:96px minmax(0,1fr);gap:22px;align-items:start}
+.profile-avatar{width:96px;height:96px;border:1px solid rgba(255,255,255,.12);object-fit:cover;background:linear-gradient(180deg, rgba(236,255,0,.14), rgba(255,255,255,.02))}
+.profile-fallback{display:flex;align-items:center;justify-content:center;font-family:"Arial Black","Helvetica Neue",sans-serif;font-size:2rem;color:var(--accent)}
+.kv-grid{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px 14px}
+.kv-grid dt{color:#7e7e7a;text-transform:uppercase;letter-spacing:.1em;font-size:.78rem}
+.kv-grid dd{margin:0;color:var(--text);word-break:break-word}
+.session-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:22px}
+.meta-box{border:1px solid var(--border);background:var(--panel-soft);padding:16px}
+.meta-label{display:block;color:#7e7e7a;text-transform:uppercase;letter-spacing:.12em;font-size:.74rem;margin-bottom:6px}
+.meta-value{font-size:.98rem;color:var(--text)}
+.site-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:12px}
+.site-list li,.site-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px;border:1px solid var(--border);background:rgba(255,255,255,.02)}
+.site-info{display:flex;flex-direction:column;gap:4px}
+.site-origin{font-weight:700;color:var(--text)}
+.site-meta{font-size:.85rem;color:var(--muted)}
+.session-shell{display:flex;flex-direction:column;gap:24px}
+.session-copy{max-width:720px;font-size:1.02rem}
+.actions{display:flex;gap:12px;justify-content:flex-start;flex-wrap:wrap}
+.consent-box{text-align:left;padding:8px 0}
+.consent-origin{font-size:1.15rem;font-weight:700;margin-top:14px;color:var(--text)}
+.consent-detail{margin:12px 0 24px;color:var(--muted)}
+.empty{padding:20px;border:1px dashed rgba(255,255,255,.14);color:var(--muted);background:rgba(255,255,255,.02)}
+.muted{color:var(--muted)}
+.stack{display:flex;flex-direction:column;gap:18px}
+.mono{font-family:"IBM Plex Mono","SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace}
+footer{margin-top:56px;padding-top:26px;border-top:1px solid rgba(255,255,255,.08);display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;color:#7e7e7a;font-size:.92rem}
+.footer-links{display:flex;gap:20px;flex-wrap:wrap}
+footer a{color:#9f9f98;text-decoration:none}
+footer a:hover{color:var(--text)}
+.alert{padding:14px 16px;border:1px solid var(--border);margin-bottom:16px}
+.alert.info{background:rgba(96,165,250,.08);color:#bfdbfe}
+.alert.warning{background:rgba(250,204,21,.08);color:#fde68a}
+form{margin:0}
+@media (max-width: 960px){.dashboard-grid{grid-template-columns:1fr}.hero-title{max-width:560px}.session-meta{grid-template-columns:1fr}}
+@media (max-width: 720px){main{padding:28px 18px 54px}.card,.panel{padding:22px}.profile-panel{grid-template-columns:1fr}.profile-avatar,.profile-fallback{width:88px;height:88px}.kv-grid{grid-template-columns:1fr}.site-list li,.site-row{flex-direction:column;align-items:flex-start}.btn{width:100%}footer{flex-direction:column}}
 `;
 
 function html(title: string, body: string, init?: ResponseInit): Response {
@@ -197,6 +300,12 @@ function parseBearer(request: Request): string | null {
   return header?.startsWith("Bearer ") ? header.slice(7) : null;
 }
 
+/** SHA-256 first-8-hex of `input` — used as an opaque rate-limit key suffix. */
+async function shortHash(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(buf).slice(0, 4)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 function parseClaims(token: string | null): { sub?: string; aud?: string; exp?: number } | null {
   if (!token) return null;
   const parts = token.split(".");
@@ -210,7 +319,20 @@ function parseClaims(token: string | null): { sub?: string; aud?: string; exp?: 
 
 function footerHtml(env: Env): string {
   const docsUrl = escapeHtml(env.DOCS_BASE_URL ?? "https://docs.auth.adityavs.tech");
-  return `<footer><a href="/">Home</a><a href="${docsUrl}">Docs</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></footer>`;
+  return `<footer><span>Free & OSS</span><div class="footer-links"><a href="/">Home</a><a href="${docsUrl}">Docs</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div></footer>`;
+}
+
+function normalizeReturnTo(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value, "https://auth.adityavs.tech");
+    if (parsed.origin !== "https://auth.adityavs.tech") return null;
+    const route = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    if (!route.startsWith("/") || route.startsWith("//")) return null;
+    return route;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -295,6 +417,78 @@ async function getUserById(userId: string, env: Env): Promise<UserRecord | null>
   return db.users.get(userId) ?? null;
 }
 
+async function deleteUserAccount(userId: string, env: Env): Promise<void> {
+  if (convex(env)) {
+    await cvxM(env, "users:deleteUserAccount", { userId });
+    return;
+  }
+
+  db.users.delete(userId);
+
+  for (const [sessionId, session] of db.sessions.entries()) {
+    if (session.userId === userId) {
+      db.sessions.delete(sessionId);
+    }
+  }
+
+  for (const [consentKey, consent] of db.consents.entries()) {
+    if (consent.userId === userId) {
+      db.consents.delete(consentKey);
+    }
+  }
+
+  for (const [pairwiseKey, pairwise] of db.pairwiseByUserClient.entries()) {
+    if (pairwise.userId === userId) {
+      db.pairwiseByUserClient.delete(pairwiseKey);
+      db.pairwiseBySub.delete(pairwise.pairwiseSub);
+    }
+  }
+
+  for (const [transactionId, transaction] of db.transactions.entries()) {
+    if (transaction.userId === userId) {
+      db.transactions.delete(transactionId);
+    }
+  }
+
+  for (const [code, codeRecord] of db.codes.entries()) {
+    if (codeRecord.userId === userId) {
+      db.codes.delete(code);
+    }
+  }
+}
+
+function renderAvatar(profile: BrokerUserProfile): string {
+  if (profile.picture) {
+    return `<img class="profile-avatar" src="${escapeHtml(profile.picture)}" alt="" />`;
+  }
+  const fallback = escapeHtml((profile.name ?? profile.email ?? "A").trim().charAt(0).toUpperCase() || "A");
+  return `<div class="profile-avatar profile-fallback">${fallback}</div>`;
+}
+
+function renderAuthorizedSitesList(sites: AuthorizedSite[], revoke = false, returnTo = "/authorized-sites"): string {
+  if (sites.length === 0) {
+    return `<div class="empty"><p>No authorized sites yet.</p><p>When you sign in to an app using AVS AUTH, it will appear here.</p></div>`;
+  }
+
+  return `<ul class="site-list">${sites.map((site) => {
+    const revokeAction = revoke
+      ? `<form method="post" action="/authorized-sites/revoke">
+            <input type="hidden" name="client_id" value="${escapeHtml(site.clientId)}"/>
+            <input type="hidden" name="return_to" value="${escapeHtml(returnTo)}"/>
+            <button class="btn danger" type="submit" style="min-height:44px;padding:0 18px">Revoke</button>
+          </form>`
+      : "";
+
+    return `<li>
+      <div class="site-info">
+        <span class="site-origin">${escapeHtml(site.origin)}</span>
+        <span class="site-meta">PII: ${site.piiGranted ? "granted" : "not granted"}${site.grantedAt ? ` · Authorized ${new Date(site.grantedAt).toLocaleDateString()}` : ""}${site.lastUsedAt ? ` · Last used ${new Date(site.lastUsedAt).toLocaleDateString()}` : ""}</span>
+      </div>
+      ${revokeAction}
+    </li>`;
+  }).join("")}</ul>`;
+}
+
 async function getTransaction(transactionId: string | null, env: Env): Promise<TransactionRecord | null> {
   if (!transactionId) return null;
   if (convex(env)) {
@@ -306,23 +500,28 @@ async function getTransaction(transactionId: string | null, env: Env): Promise<T
 }
 
 async function getPairwise(user: UserRecord, clientId: string, env: Env): Promise<PairwiseRecord> {
-  if (convex(env)) {
-    return await cvxM<PairwiseRecord>(env, "pairwiseSubjects:getOrCreatePairwiseSubject", {
-      userId: user.userId, clientId, pairwiseSub: null
-    });
-  }
-  const key = `${user.userId}|${clientId}`;
-  const existing = db.pairwiseByUserClient.get(key);
-  if (existing) return existing;
+  // Always pre-compute HMAC-derived pairwise sub (consistent across in-memory and Convex)
   const pairwiseSub = await derivePairwiseSub({
     pairwiseSecret: env.PAIRWISE_SECRET ?? "dev_pairwise_secret",
     googleSub: user.profile.googleSub,
     clientId
   });
+  if (convex(env)) {
+    return await cvxM<PairwiseRecord>(env, "pairwiseSubjects:getOrCreatePairwiseSubject", {
+      userId: user.userId, clientId, pairwiseSub
+    });
+  }
+  const key = `${user.userId}|${clientId}`;
+  const existing = db.pairwiseByUserClient.get(key);
+  if (existing) return existing;
   const record = { userId: user.userId, clientId, pairwiseSub };
   db.pairwiseByUserClient.set(key, record);
   db.pairwiseBySub.set(pairwiseSub, record);
   return record;
+}
+
+function isBrokerSignInTransaction(tx: TransactionRecord, env: Env): boolean {
+  return tx.clientId === brokerClientId(env);
 }
 
 async function getGoogleProfile(env: Env, code: string): Promise<BrokerUserProfile> {
@@ -356,12 +555,7 @@ async function getGoogleProfile(env: Env, code: string): Promise<BrokerUserProfi
 // ---------------------------------------------------------------------------
 
 function scriptSource(): string {
-  // Hosted browser script - matches @avs-auth/auth SDK behavior including:
-  // - Strict 200/401 response parsing in checkSession (ss)
-  // - Aud pre-validation when clientId provided
-  // - Auto-stop session monitor on login_required (sm)
-  // - avs-auth:login-required event dispatch
-  return `(function(){var base=new URL(document.currentScript&&document.currentScript.src?document.currentScript.src:window.location.origin).origin;function p(u){var x=new URL(u||window.location.href,window.location.origin);var c=x.searchParams.get("code"),s=x.searchParams.get("state");return c&&s?{code:c,state:s}:null}function cc(u){var x=new URL(u||window.location.href,window.location.origin);x.searchParams.delete("code");x.searchParams.delete("state");x.searchParams.delete("error");history.replaceState({}, "",x.pathname+x.search+x.hash);return x.toString()}function gi(k){var r=localStorage.getItem(k||"avs_auth_identity");return r?JSON.parse(r):{userId:null}}function pi(u,t,k,e){localStorage.setItem(k||"avs_auth_identity",JSON.stringify({userId:u,token:t,expiresIn:e&&e.expiresIn,receivedAt:Date.now()}))}function ci(k){localStorage.removeItem(k||"avs_auth_identity")}function di(t){if(!t)return null;var parts=t.split(".");if(parts.length<2)return null;try{return JSON.parse(atob(parts[1].replace(/-/g,"+").replace(/_/g,"/")))}catch(e){return null}}async function pk(){var ch='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';function r(l){var b=crypto.getRandomValues(new Uint8Array(l)),o='';for(var i=0;i<b.length;i++)o+=ch[b[i]%ch.length];return o}var v=r(64),s=r(32),d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v));var a=Array.from(new Uint8Array(d));var c=btoa(String.fromCharCode.apply(null,a)).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');return{verifier:v,state:s,challenge:c}}function su(p){var u=new URL("/authorize",p.avsBaseUrl||base);u.searchParams.set("client_id",p.clientId||("origin:"+new URL(p.redirectUri).origin));u.searchParams.set("redirect_uri",p.redirectUri);u.searchParams.set("state",p.state);u.searchParams.set("code_challenge",p.codeChallenge);u.searchParams.set("code_challenge_method","S256");if(p.requestPii)u.searchParams.set("pii","true");return u.toString()}async function ex(p){var r=await fetch(new URL("/token",p.avsBaseUrl||base),{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({grant_type:"authorization_code",client_id:p.clientId,redirect_uri:p.redirectUri,code:p.code,code_verifier:p.codeVerifier})});if(!r.ok)throw new Error("Token exchange failed ("+r.status+")");return r.json()}async function ss(o){var i=gi(o&&o.storageKey),t=o&&o.token?o.token:i.token;if(!t)return{status:"login_required",reason:"invalid_token"};var eCid=o&&o.clientId?o.clientId:o&&o.redirectUri?"origin:"+new URL(o.redirectUri).origin:null;if(eCid){var cl=di(t);if(!cl||cl.aud!==eCid)return{status:"login_required",reason:"invalid_token"}}var r=await fetch(new URL("/session/check",(o&&o.avsBaseUrl)||base),{method:"POST",headers:{Authorization:"Bearer "+t}});if(r.status===404||r.status===501)return{status:"unsupported"};if(r.status===200){var b=await r.json();if(b.status==="active")return{status:"active"};throw new Error("Session check returned an invalid success payload")}if(r.status===401){var b=await r.json();if(b.status==="login_required"&&typeof b.reason==="string"&&(b.reason==="revoked"||b.reason==="expired"||b.reason==="invalid_token"))return{status:"login_required",reason:b.reason};return{status:"login_required",reason:"invalid_token"}}throw new Error("Session check failed ("+r.status+")")}async function si(o){var cb=(o&&o.callbackPath)||"/avs-auth/callback";var ru=(o&&o.redirectUri)||new URL(cb,window.location.origin).toString();var b=await pk();sessionStorage.setItem("avs_auth_pkce",JSON.stringify({state:b.state,verifier:b.verifier,createdAt:Date.now()}));window.location.assign(su({avsBaseUrl:(o&&o.avsBaseUrl)||base,redirectUri:ru,clientId:(o&&o.clientId)||("origin:"+new URL(ru).origin),state:b.state,codeChallenge:b.challenge,requestPii:o&&o.requestPii}));return b}async function fs(o){var c=p((o&&o.url)||window.location.href);if(!c)return null;var pk=JSON.parse(sessionStorage.getItem("avs_auth_pkce")||"null");if(!pk||pk.state!==c.state)throw new Error("State mismatch in callback");var cb=(o&&o.callbackPath)||"/avs-auth/callback";var ru=(o&&o.redirectUri)||new URL(cb,window.location.origin).toString();var token=await ex({avsBaseUrl:(o&&o.avsBaseUrl)||base,clientId:(o&&o.clientId)||("origin:"+new URL(ru).origin),redirectUri:ru,code:c.code,codeVerifier:pk.verifier});pi(token.pairwise_sub,token.id_token,(o&&o.storageKey)||"avs_auth_identity",{expiresIn:token.expires_in});sessionStorage.removeItem("avs_auth_pkce");cc();return token}function sm(o){var stopped=false;function stop(){if(stopped)return;stopped=true;clearInterval(timer)}var timer=setInterval(async function(){if(stopped)return;try{var r=await ss(o||{});if(r.status==="login_required"){stop();if(o&&o.onLoginRequired)o.onLoginRequired(r);window.dispatchEvent(new CustomEvent("avs-auth:login-required",{detail:r}))}}catch(e){if(o&&o.onError)o.onError(e)}},(o&&o.intervalMs)||60000);return{stop:stop}}var ds=document.currentScript;var opts={callbackPath:(ds&&ds.dataset.callbackPath)||"/avs-auth/callback",requestPii:ds&&ds.dataset.requestPii==="true",autoHandleCallback:!(ds&&ds.dataset.autoHandleCallback==="false"),monitorSession:!(ds&&ds.dataset.monitorSession==="false"),sessionMonitorIntervalMs:parseInt((ds&&ds.dataset.sessionMonitorIntervalMs)||"60000",10),linkSelector:(ds&&ds.dataset.linkSelector)||"a[data-avs-auth],button[data-avs-auth]",storageKey:(ds&&ds.dataset.storageKey)||"avs_auth_identity",debug:ds&&ds.dataset.debug==="true"};window.AvsAuth={defaults:{avsBaseUrl:base,callbackPath:opts.callbackPath,storageKey:opts.storageKey},createPkceBundle:pk,createSignInUrl:su,parseCallback:p,clearCallbackParams:cc,startSignIn:si,finishSignIn:fs,handleCallback:fs,exchangeCode:ex,checkSession:ss,startSessionMonitor:sm,getIdentity:gi,persistIdentity:pi,clearIdentity:ci,decodeIdentityClaims:di};if(opts.autoHandleCallback&&window.location.pathname===opts.callbackPath){void window.AvsAuth.handleCallback()}document.querySelectorAll(opts.linkSelector).forEach(function(n){n.addEventListener('click',function(e){e.preventDefault();void window.AvsAuth.startSignIn({requestPii:n.getAttribute('data-avs-auth-pii')==='true'})})});if(opts.monitorSession&&gi(opts.storageKey).token){sm({intervalMs:opts.sessionMonitorIntervalMs,storageKey:opts.storageKey})}})();`;
+  return AVS_AUTH_SCRIPT_SOURCE;
 }
 
 // ---------------------------------------------------------------------------
@@ -386,30 +580,47 @@ export default {
         if (user) {
           const name = escapeHtml(user.profile.name ?? "User");
           const email = escapeHtml(user.profile.email ?? user.profile.googleSub);
-          const pic = user.profile.picture ? `<img src="${escapeHtml(user.profile.picture)}" alt="" width="56" height="56"/>` : "";
+          const pic = renderAvatar(user.profile);
           return html("Home", `
-            <div class="card">
-              <div class="profile-header">${pic}<div><h1>Welcome back, ${name}</h1><p>${email}</p></div></div>
-              <div class="nav">
-                <a class="btn" href="/me">Profile</a>
-                <a class="btn secondary" href="/authorized-sites">Authorized Sites</a>
+            <div class="card hero-shell stack">
+              <a class="brand-mark" href="/">avs</a>
+              <div>
+                <span class="hero-kicker">Broker Session</span>
+                <h1 class="hero-title">WELCOME <span class="accent">BACK.</span></h1>
+                <p class="hero-copy">You are already signed in to AVS AUTH. Open your session dashboard to manage your profile, inspect authorized sites, and use your broker session for fast auth across every connected app.</p>
+              </div>
+              <div class="panel profile-panel">
+                ${pic}
+                <div class="stack">
+                  <div>
+                    <h2>${name}</h2>
+                    <p>${email}</p>
+                  </div>
+                  <div class="nav">
+                    <a class="btn primary" href="/me">Open Session Dashboard</a>
+                    <a class="btn secondary" href="/authorized-sites">Authorized Sites</a>
+                  </div>
+                </div>
               </div>
             </div>
             ${footerHtml(env)}`);
         }
         return html("Home", `
-          <div class="card">
-            <h1>AVS AUTH</h1>
-            <p>A minimal, privacy-first authentication broker with pairwise OIDC identity.</p>
-            <p>Sign in once, then reuse your broker session across any app that integrates with AVS AUTH. Each app receives a unique, origin-scoped subject identifier.</p>
-            <h2>For developers</h2>
-            <p>Add authentication to your app with a single script tag:</p>
-            <p><code>&lt;script src="${escapeHtml(env.ISSUER)}/avs-auth.js"&gt;&lt;/script&gt;</code></p>
-            <p>Or install the SDK:</p>
-            <p><code>npm install @avs-auth/auth</code> or <code>npm install @avs-auth/react</code></p>
-            <div class="nav" style="margin-top:24px">
-              <a class="btn" href="/sign-in">Sign In</a>
-              <a class="btn secondary" href="${escapeHtml(env.DOCS_BASE_URL ?? "https://docs.auth.adityavs.tech")}">Documentation</a>
+          <div class="card hero-shell stack">
+            <a class="brand-mark" href="/">avs</a>
+            <div>
+              <span class="hero-kicker">AVS AUTH</span>
+              <h1 class="hero-title">SIGN IN <span class="accent">ONCE.</span></h1>
+              <p class="hero-copy">Create one broker session on AVS AUTH, then reuse it for fast authorization handshakes across every website that integrates with your broker. No dashboard registration required for client apps.</p>
+            </div>
+            <div class="nav">
+              <a class="btn primary" href="/sign-in">Sign In With Google</a>
+              <a class="btn secondary" href="${escapeHtml(env.DOCS_BASE_URL ?? "https://docs.auth.adityavs.tech")}">Read Docs</a>
+            </div>
+            <div class="panel stack">
+              <p class="muted">Add authentication in two lines:</p>
+              <p><code>&lt;script src="${escapeHtml(env.ISSUER)}/avs-auth.js"&gt;&lt;/script&gt;</code></p>
+              <p><code>&lt;a href="${escapeHtml(env.ISSUER)}/authorize?redirect_uri=https%3A%2F%2Fyour-app.com%2Favs-auth%2Fcallback"&gt;Sign In&lt;/a&gt;</code></p>
             </div>
           </div>
           ${footerHtml(env)}`);
@@ -423,9 +634,10 @@ export default {
       // ---- JWKS ----
       if (url.pathname === "/.well-known/jwks.json") {
         if (convex(env)) {
+          // Include both active AND retired keys so tokens signed by a
+          // just-retired key can still be verified during the TTL overlap window.
           const allKeys = await cvxQ<Array<{ kid: string; publicJwk: Jwk; status: string }>>(env, "signingKeys:listPublicSigningKeys", {});
-          const activeKeys = (allKeys ?? []).filter((k) => k.status !== "retired");
-          return json({ keys: activeKeys.map((k) => k.publicJwk) });
+          return json({ keys: (allKeys ?? []).map((k) => k.publicJwk) });
         }
         return json(env.JWKS_JSON ? parseJwks(env.JWKS_JSON) : { keys: [(await signingKeyPromise).publicJwk] as Jwk[] });
       }
@@ -441,6 +653,8 @@ export default {
           nonce: url.searchParams.get("nonce") ?? undefined,
           env: env.ENVIRONMENT
         });
+        // Register client + check blocked (Convex mode only)
+        await registerAndCheckClient(validated.clientId, env, reqId);
         // Rate limiting (Convex mode only)
         if (convex(env)) {
           const rl = await cvxM<{ allowed: boolean; retryAfter: number }>(
@@ -519,12 +733,15 @@ export default {
         const tx = await getTransaction(url.searchParams.get("tx"), env);
         const originDisplay = tx ? escapeHtml(tx.clientId.replace(/^origin:/, "")) : "";
         return html("Sign In", `
-          <div class="card">
-            <h1>Sign in to continue</h1>
-            ${tx ? `<p>The application at <code>${originDisplay}</code> is requesting authentication.</p>` : "<p>Sign in to manage your AVS AUTH account.</p>"}
-            <p>AVS AUTH uses a central broker session. After signing in with Google, you can authenticate with any integrated app without signing in again.</p>
-            <div class="nav" style="margin-top:24px">
-              <a class="btn" href="/auth/google/start${tx ? `?tx=${encodeURIComponent(tx.transactionId)}` : ""}">
+          <div class="card hero-shell stack">
+            <a class="brand-mark" href="/">avs</a>
+            <div>
+              <span class="hero-kicker">Central Broker Sign-In</span>
+              <h1 class="hero-title">YOUR <span class="accent">SESSION.</span></h1>
+              ${tx ? `<p class="hero-copy">The application at <code>${originDisplay}</code> is requesting authentication. Sign in once with AVS AUTH and the broker can complete fast handshakes for this and any other connected app.</p>` : `<p class="hero-copy">Sign in to AVS AUTH once. After that, every website connected to your broker can reuse this central session for near-instant authentication.</p>`}
+            </div>
+            <div class="nav">
+              <a class="btn primary" href="/auth/google${tx ? `?tx=${encodeURIComponent(tx.transactionId)}` : ""}">
                 Continue with Google
               </a>
               <a class="btn secondary" href="/">Cancel</a>
@@ -533,10 +750,30 @@ export default {
           ${footerHtml(env)}`);
       }
 
+      if (url.pathname === "/auth/google" && request.method === "GET") {
+        return Response.redirect(new URL(`/auth/google/start${url.search}`, env.ISSUER).toString(), 302);
+      }
+
       // ---- Google OAuth start ----
       if (url.pathname === "/auth/google/start" && request.method === "GET") {
-        const tx = await getTransaction(url.searchParams.get("tx"), env);
-        if (!tx) throw new OidcError("invalid_request", "Unknown or expired auth transaction");
+        let tx = await getTransaction(url.searchParams.get("tx"), env);
+        if (!tx) {
+          tx = {
+            ...buildAuthorizeRequestRecord({
+              clientId: brokerClientId(env),
+              redirectUri: new URL("/me", env.ISSUER).toString(),
+              state: `broker-sign-in-${crypto.randomUUID()}`,
+              codeChallenge: `broker-sign-in-${crypto.randomUUID()}`,
+              codeChallengeMethod: "S256",
+              requestPii: false
+            })
+          };
+          if (convex(env)) {
+            await cvxM(env, "transactions:createAuthTransaction", tx);
+          } else {
+            db.transactions.set(tx.transactionId, tx);
+          }
+        }
         if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_REDIRECT_URI) {
           if (env.ENVIRONMENT === "production") {
             throw new OidcError("server_error", "Google OAuth not configured", 500);
@@ -573,6 +810,10 @@ export default {
           headers.set("location", new URL(`/consent?tx=${encodeURIComponent(tx.transactionId)}`, env.ISSUER).toString());
           return new Response(null, { status: 302, headers });
         }
+        if (isBrokerSignInTransaction(tx, env)) {
+          headers.set("location", new URL("/me", env.ISSUER).toString());
+          return new Response(null, { status: 302, headers });
+        }
         // Auto-grant basic consent
         if (convex(env)) {
           await cvxM(env, "consents:grantConsent", { userId: user.userId, clientId: tx.clientId, piiGranted: false, grantedAt: Date.now(), lastUsedAt: Date.now() });
@@ -595,8 +836,15 @@ export default {
       // ---- Consent page (GET) ----
       if (url.pathname === "/consent" && request.method === "GET") {
         const tx = await getTransaction(url.searchParams.get("tx"), env);
+        if (!tx) {
+          return html(
+            "Error",
+            `<div class="card"><h1>Something went wrong</h1><p>Consent request is missing its ticket.</p><a class="btn" href="/">Return Home</a></div>${footerHtml(env)}`,
+            { status: 400 }
+          );
+        }
         const user = tx?.userId ? await getUserById(tx.userId, env) : null;
-        if (!tx || !user) {
+        if (!user) {
           return html("No Session", `<div class="card"><h1>Session required</h1><p>Please sign in to continue this authorization request.</p><a class="btn" href="/sign-in">Sign In</a></div>${footerHtml(env)}`, { status: 401 });
         }
         const originDisplay = escapeHtml(tx.clientId.replace(/^origin:/, ""));
@@ -633,6 +881,14 @@ export default {
         const tx = await getTransaction(body.get("tx"), env);
         if (!tx || !tx.userId) throw new OidcError("invalid_request", "Unknown or expired auth transaction");
         if (body.get("decision") === "deny") {
+          void audit(env, {
+            actorType: "user",
+            actorId: tx.userId,
+            action: "consent_denied",
+            targetType: "consent",
+            clientId: tx.clientId,
+            correlationId: reqId
+          });
           const redirect = new URL(tx.redirectUri);
           redirect.searchParams.set("error", "access_denied");
           redirect.searchParams.set("state", tx.state);
@@ -643,6 +899,15 @@ export default {
         } else {
           db.consents.set(getConsentKey(tx.userId, tx.clientId), { userId: tx.userId, clientId: tx.clientId, origin: new URL(tx.redirectUri).origin, piiGranted: tx.requestPii, grantedAt: Date.now(), lastUsedAt: Date.now() });
         }
+        void audit(env, {
+          actorType: "user",
+          actorId: tx.userId,
+          action: "consent_granted",
+          targetType: "consent",
+          clientId: tx.clientId,
+          correlationId: reqId,
+          metadata: { piiGranted: tx.requestPii }
+        });
         const codeRecord = buildAuthorizationCodeRecord({ transactionId: tx.transactionId, clientId: tx.clientId, redirectUri: tx.redirectUri, userId: tx.userId });
         if (convex(env)) {
           await cvxM(env, "codes:createAuthorizationCode", codeRecord);
@@ -663,6 +928,8 @@ export default {
           ? await cvxM<CodeRecord | null>(env, "codes:redeemAuthorizationCode", { code })
           : db.codes.get(code) ?? null;
         if (!codeRecord) throw new OidcError("invalid_grant", "Authorization code not found");
+        // Register client + check blocked (Convex mode only)
+        await registerAndCheckClient(codeRecord.clientId, env, reqId);
         // Rate limiting (Convex mode only)
         if (convex(env)) {
           const rl = await cvxM<{ allowed: boolean; retryAfter: number }>(
@@ -705,7 +972,7 @@ export default {
         }
         const consent = await getConsent(user.userId, tx.clientId, env);
         const pairwise = await getPairwise(user, tx.clientId, env);
-        const signingKey = await signingKeyPromise;
+        const signingKey = convex(env) ? await getConvexSigningKey(env) : await signingKeyPromise;
         const issued = await issueIdToken({
           issuer: env.ISSUER,
           audience: tx.clientId,
@@ -717,37 +984,118 @@ export default {
           includePii: shouldIncludePiiClaims({ requestPii: tx.requestPii, piiGranted: consent?.piiGranted })
         });
         const response: TokenResponse = { id_token: issued.token, pairwise_sub: pairwise.pairwiseSub, token_type: "Bearer", expires_in: 300 };
+        void audit(env, {
+          actorType: "system",
+          action: "token_issued",
+          targetType: "token",
+          targetId: pairwise.pairwiseSub,
+          clientId: tx.clientId,
+          correlationId: reqId,
+          metadata: { userId: user.userId }
+        });
         return json(response, { headers: corsHeaders(request, env) });
       }
 
       // ---- Session check ----
       if (url.pathname === "/session/check" && request.method === "POST") {
         const token = parseBearer(request);
-        const claims = parseClaims(token);
+        if (!token) {
+          const result = buildSessionCheckResponse({ hasValidToken: false, hasActiveSession: false, hasActiveConsent: false });
+          return json(result, { status: 401, headers: corsHeaders(request, env) });
+        }
+
+        // Extract clientId from token claims for rate limiting (decode only, before verify).
+        // SECURITY NOTE: `aud` comes from the unverified JWT payload, so a caller
+        // could craft a token with a victim's aud to burn their rate-limit quota
+        // (nuisance / light DoS against another origin). This does NOT let the
+        // caller bypass rate limits on a *valid* token — the verified aud is checked
+        // later.  We mitigate cross-origin counter skew by also keying on an IP hash
+        // when the CF-Connecting-IP header is available (Cloudflare Workers).
+        const rawClaims = parseClaims(token);
+
+        // Rate limiting (Convex mode only) — Gap 6
+        if (convex(env) && rawClaims?.aud) {
+          // Composite key: "aud|ip-hash" to prevent a spoofed aud from burning
+          // another origin's budget without also burning the attacker's IP budget.
+          const ip = request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "";
+          const ipSuffix = ip ? `|${await shortHash(ip)}` : "";
+          const rateLimitKey = `${rawClaims.aud as string}${ipSuffix}`;
+          const rl = await cvxM<{ allowed: boolean; retryAfter: number }>(
+            env, "originMetrics:recordAndCheckRateLimit",
+            { clientId: rateLimitKey, endpoint: "session_check" }
+          );
+          if (!rl.allowed) {
+            return new Response(
+              JSON.stringify({ error: "rate_limited", error_description: "Too many requests." }),
+              {
+                status: 429,
+                headers: {
+                  "content-type": "application/json",
+                  "retry-after": String(rl.retryAfter),
+                  "cache-control": "no-store",
+                  ...corsHeaders(request, env)
+                }
+              }
+            );
+          }
+        }
+
+        // Verify JWT signature against JWKS and check iss — Gap 4 (session check hardening)
+        // In Convex mode, fetch public keys from Convex (matches JWKS endpoint).
+        // In non-Convex mode, use the in-memory signing key (always the actual signer).
+        // Include both active AND retired public keys so tokens signed by a
+        // just-retired key remain verifiable during the TTL overlap window.
+        // This matches the JWKS endpoint behavior (/.well-known/jwks.json).
+        let publicKeys: Jwk[];
+        if (convex(env)) {
+          const allKeys = await cvxQ<Array<{ kid: string; publicJwk: Jwk; status: string }>>(
+            env, "signingKeys:listPublicSigningKeys", {}
+          );
+          publicKeys = (allKeys ?? []).map((k) => k.publicJwk);
+        } else {
+          publicKeys = [(await signingKeyPromise).publicJwk];
+        }
+
+        const verification = await verifyIdToken({ token, publicKeys, issuer: env.ISSUER });
+        if (!verification.valid) {
+          const result = buildSessionCheckResponse({ hasValidToken: false, hasActiveSession: false, hasActiveConsent: false });
+          return json(result, { status: 401, headers: corsHeaders(request, env) });
+        }
+
+        const claims = verification.claims;
         let hasActiveSession = false;
         let hasActiveConsent = false;
 
-        if (claims?.sub) {
-          // Look up pairwise record to find userId and clientId
+        const session = await getSessionFromRequest(request, env);
+        hasActiveSession = Boolean(session);
+
+        if (session && claims.aud) {
           if (convex(env)) {
-            // For Convex mode, we use the session cookie + token claims
-            const session = await getSessionFromRequest(request, env);
-            hasActiveSession = Boolean(session);
-            if (session && claims.aud) {
-              const consent = await getConsent(session.userId, claims.aud as string, env);
+            // Sub-to-session binding: verify pairwise sub matches session user
+            const pairwise = await cvxQ<PairwiseRecord | null>(
+              env, "pairwiseSubjects:getPairwiseByUserAndClient",
+              { userId: session.userId, clientId: claims.aud }
+            );
+            if (pairwise && pairwise.pairwiseSub === claims.sub) {
+              const consent = await getConsent(session.userId, claims.aud, env);
               hasActiveConsent = Boolean(consent);
+            } else {
+              // Sub does not match session user — treat as no active session
+              hasActiveSession = false;
             }
           } else {
             const pairwise = db.pairwiseBySub.get(claims.sub) ?? null;
-            const consent = pairwise ? await getConsent(pairwise.userId, pairwise.clientId, env) : null;
-            const session = await getSessionFromRequest(request, env);
-            hasActiveSession = Boolean(session);
-            hasActiveConsent = Boolean(consent);
+            if (pairwise && pairwise.userId === session.userId) {
+              const consent = await getConsent(pairwise.userId, pairwise.clientId, env);
+              hasActiveConsent = Boolean(consent);
+            } else {
+              hasActiveSession = false;
+            }
           }
         }
 
         const result = buildSessionCheckResponse({
-          hasValidToken: Boolean(claims?.sub && claims?.aud && claims?.exp && claims.exp * 1000 > Date.now()),
+          hasValidToken: true, // Already verified by verifyIdToken
           hasActiveSession,
           hasActiveConsent
         });
@@ -763,9 +1111,19 @@ export default {
           } else {
             session.revokedAt = Date.now();
           }
+          void audit(env, {
+            actorType: "user",
+            actorId: session.userId,
+            action: "session_revoked",
+            targetType: "session",
+            targetId: session.sessionId,
+            correlationId: reqId
+          });
         }
-        const response: LogoutResponse = { status: "ok" };
-        return json(response, { headers: { "set-cookie": clearSessionCookie(env), ...corsHeaders(request, env) } });
+        const headers = new Headers(corsHeaders(request, env));
+        headers.set("set-cookie", clearSessionCookie(env));
+        headers.set("location", new URL("/", env.ISSUER).toString());
+        return new Response(null, { status: 302, headers });
       }
 
       // ---- Profile page ----
@@ -773,21 +1131,68 @@ export default {
         const session = await getSessionFromRequest(request, env);
         const user = session ? await getUserById(session.userId, env) : null;
         if (!session || !user) {
-          return html("No Session", `<div class="card"><h1>Not signed in</h1><p>Sign in to view your profile.</p><a class="btn" href="/sign-in">Sign In</a></div>${footerHtml(env)}`, { status: 401 });
+          return html("No Session", `<div class="card"><h1>Not signed in</h1><p>Sign in to view your profile.</p><a class="btn" href="/sign-in">Sign In</a></div>${footerHtml(env)}`);
         }
+        const sites = await listAuthorizedSites(user.userId, env);
         const name = escapeHtml(user.profile.name ?? "User");
         const email = escapeHtml(user.profile.email ?? user.profile.googleSub);
-        const pic = user.profile.picture ? `<img src="${escapeHtml(user.profile.picture)}" alt="" width="56" height="56"/>` : "";
+        const statusLabel = user.profile.emailVerified ? "Verified" : "Active";
         return html("Profile", `
-          <div class="card">
-            <div class="profile-header">${pic}<div><h1>${name}</h1><p>${email}</p></div></div>
-            <h2>Session</h2>
-            <p>Expires: <code>${new Date(session.expiresAt).toLocaleString()}</code></p>
-            <h2>Actions</h2>
-            <div class="nav">
-              <a class="btn secondary" href="/authorized-sites">Manage Authorized Sites</a>
-              <form method="post" action="/logout" style="display:inline"><button class="btn danger" type="submit">Sign Out</button></form>
+          <div class="card session-shell">
+            <a class="brand-mark" href="/">avs</a>
+            <div>
+              <span class="hero-kicker">Broker Session Dashboard</span>
+              <h1 class="hero-title">YOUR <span class="accent">SESSION.</span></h1>
+              <p class="session-copy">You are signed in to AVS AUTH. Connected apps can reuse this broker session for fast sign-in handshakes without sending you back through a full Google auth prompt every time.</p>
             </div>
+
+            <div class="grid dashboard-grid">
+              <section class="panel stack">
+                <div class="profile-panel">
+                  ${renderAvatar(user.profile)}
+                  <div class="stack">
+                    <dl class="kv-grid">
+                      <dt>Name</dt>
+                      <dd>${name}</dd>
+                      <dt>Email</dt>
+                      <dd>${email}</dd>
+                      <dt>Status</dt>
+                      <dd>${statusLabel}</dd>
+                      <dt>Google Sub</dt>
+                      <dd><code class="mono">${escapeHtml(user.profile.googleSub)}</code></dd>
+                    </dl>
+                    <div class="session-meta">
+                      <div class="meta-box">
+                        <span class="meta-label">Session Expires</span>
+                        <span class="meta-value">${escapeHtml(new Date(session.expiresAt).toLocaleString())}</span>
+                      </div>
+                      <div class="meta-box">
+                        <span class="meta-label">Authorized Sites</span>
+                        <span class="meta-value">${sites.length} connected app${sites.length === 1 ? "" : "s"}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <aside class="panel stack">
+                <h2>Account Actions</h2>
+                <p class="muted">Refresh your Google-backed profile, end this broker session, or permanently remove your AVS-side data.</p>
+                <div class="actions">
+                  <a class="btn secondary" href="/auth/google">Refresh Profile</a>
+                  <form method="post" action="/logout"><button class="btn danger" type="submit">Sign Out</button></form>
+                  <form method="post" action="/account/delete"><button class="btn danger" type="submit">Delete My Data</button></form>
+                </div>
+              </aside>
+            </div>
+
+            <section class="panel stack">
+              <div class="stack">
+                <h2>Authorized Sites</h2>
+                <p class="muted">Applications you have authorized through AVS AUTH. Revoking a site forces that app to request authorization again.</p>
+              </div>
+              ${renderAuthorizedSitesList(sites, true, "/me")}
+            </section>
           </div>
           ${footerHtml(env)}`);
       }
@@ -800,27 +1205,15 @@ export default {
           return html("No Session", `<div class="card"><h1>Not signed in</h1><p>Sign in to manage authorized sites.</p><a class="btn" href="/sign-in">Sign In</a></div>${footerHtml(env)}`, { status: 401 });
         }
         const sites = await listAuthorizedSites(user.userId, env);
-        const siteList = sites.length
-          ? `<ul class="site-list">${sites
-              .map(
-                (site) => `<li>
-                  <div class="site-info">
-                    <span class="site-origin">${escapeHtml(site.origin)}</span>
-                    <span class="site-meta">PII: ${site.piiGranted ? "granted" : "not granted"}${site.grantedAt ? ` · Authorized ${new Date(site.grantedAt).toLocaleDateString()}` : ""}</span>
-                  </div>
-                  <form method="post" action="/authorized-sites/revoke">
-                    <input type="hidden" name="client_id" value="${escapeHtml(site.clientId)}"/>
-                    <button class="btn danger" type="submit" style="font-size:0.85em;padding:6px 14px">Revoke</button>
-                  </form>
-                </li>`
-              )
-              .join("")}</ul>`
-          : `<div class="empty"><p>No authorized sites yet.</p><p>When you sign in to an app using AVS AUTH, it will appear here.</p></div>`;
         return html("Authorized Sites", `
-          <div class="card">
-            <h1>Authorized Sites</h1>
-            <p>These applications have been granted access through your AVS AUTH account.</p>
-            ${siteList}
+          <div class="card session-shell">
+            <a class="brand-mark" href="/">avs</a>
+            <div class="stack">
+              <span class="hero-kicker">Account Access</span>
+              <h1>Authorized Sites</h1>
+              <p>These applications have been granted access through your AVS AUTH account.</p>
+            </div>
+            ${renderAuthorizedSitesList(sites, true, "/authorized-sites")}
           </div>
           ${footerHtml(env)}`);
       }
@@ -834,6 +1227,7 @@ export default {
           return html("No Session", `<div class="card"><h1>Not signed in</h1><p>Sign in to manage authorized sites.</p><a class="btn" href="/sign-in">Sign In</a></div>${footerHtml(env)}`, { status: 401 });
         }
         const clientId = body.get("client_id") ?? "";
+        const returnTo = normalizeReturnTo(body.get("return_to")) ?? "/authorized-sites";
         if (clientId) {
           if (convex(env)) {
             await cvxM(env, "consents:revokeConsent", { userId: user.userId, clientId });
@@ -841,8 +1235,41 @@ export default {
             const consent = db.consents.get(getConsentKey(user.userId, clientId));
             if (consent) consent.revokedAt = Date.now();
           }
+          void audit(env, {
+            actorType: "user",
+            actorId: user.userId,
+            action: "consent_revoked",
+            targetType: "consent",
+            clientId,
+            correlationId: reqId
+          });
         }
-        return Response.redirect(new URL("/authorized-sites", env.ISSUER).toString(), 302);
+        return Response.redirect(new URL(returnTo, env.ISSUER).toString(), 302);
+      }
+
+      // ---- Delete account ----
+      if (url.pathname === "/account/delete" && request.method === "POST") {
+        const session = await getSessionFromRequest(request, env);
+        const user = session ? await getUserById(session.userId, env) : null;
+        if (!session || !user) {
+          return html("No Session", `<div class="card"><h1>Not signed in</h1><p>Sign in to manage your account.</p><a class="btn" href="/sign-in">Sign In</a></div>${footerHtml(env)}`, { status: 401 });
+        }
+
+        void audit(env, {
+          actorType: "user",
+          actorId: user.userId,
+          action: "account_deleted",
+          targetType: "user",
+          targetId: user.userId,
+          correlationId: reqId
+        });
+
+        await deleteUserAccount(user.userId, env);
+
+        const headers = new Headers();
+        headers.set("set-cookie", clearSessionCookie(env));
+        headers.set("location", new URL("/", env.ISSUER).toString());
+        return new Response(null, { status: 302, headers });
       }
 
       // ---- Privacy ----
@@ -865,7 +1292,7 @@ export default {
             <h2>Data retention</h2>
             <p>Broker sessions expire after 14 days. Authorization codes expire after 5 minutes. You can revoke app access at any time from <a href="/authorized-sites">Authorized Sites</a>.</p>
             <h2>Your rights</h2>
-            <p>You can view, manage, and revoke all authorized applications. To delete your account, revoke all sites and sign out.</p>
+            <p>You can view, manage, and revoke authorized applications. You can also delete your AVS AUTH account directly from your session dashboard.</p>
           </div>
           ${footerHtml(env)}`);
       }
@@ -946,12 +1373,20 @@ export default {
             return json({ error: "unavailable", error_description: "Convex not configured" }, { status: 503 });
           }
           const newKey = await generateSigningKeySet();
+          const exportedPrivateJwk = await exportPrivateKeyToJwk(newKey.privateKey);
           const result = await cvxM(env, "signingKeys:rotateSigningKey", {
             kid: newKey.kid,
             publicJwk: newKey.publicJwk,
-            encryptedPrivateJwk: JSON.stringify(newKey.privateKey),
+            encryptedPrivateJwk: exportedPrivateJwk,
             status: "active",
             createdAt: Date.now()
+          });
+          void audit(env, {
+            actorType: "operator",
+            action: "key_rotated",
+            targetType: "signing_key",
+            targetId: newKey.kid,
+            correlationId: reqId
           });
           return json({ status: "rotated", kid: newKey.kid, result });
         }
@@ -967,6 +1402,15 @@ export default {
             return json({ error: "invalid_request", error_description: "clientId required" }, { status: 400 });
           }
           await cvxM(env, "operator:blockClient", { clientId, reason: body.get("reason") ?? "admin action" });
+          void audit(env, {
+            actorType: "operator",
+            action: "client_blocked",
+            targetType: "client",
+            targetId: clientId,
+            clientId,
+            correlationId: reqId,
+            metadata: { reason: body.get("reason") ?? "admin action" }
+          });
           return json({ status: "blocked", clientId });
         }
 
@@ -981,6 +1425,14 @@ export default {
             return json({ error: "invalid_request", error_description: "clientId required" }, { status: 400 });
           }
           await cvxM(env, "operator:unblockClient", { clientId });
+          void audit(env, {
+            actorType: "operator",
+            action: "client_unblocked",
+            targetType: "client",
+            targetId: clientId,
+            clientId,
+            correlationId: reqId
+          });
           return json({ status: "unblocked", clientId });
         }
 
@@ -995,6 +1447,13 @@ export default {
             return json({ error: "invalid_request", error_description: "userId required" }, { status: 400 });
           }
           await cvxM(env, "operator:revokeAllSessionsForUser", { userId });
+          void audit(env, {
+            actorType: "operator",
+            action: "all_sessions_revoked",
+            targetType: "user",
+            targetId: userId,
+            correlationId: reqId
+          });
           return json({ status: "revoked", userId });
         }
 
